@@ -118,6 +118,55 @@ test("이미 id가 있는 샘플 형태는 id를 유지하고 decision만 초기
   assert.equal(out.debug.length, 0);
 });
 
+test("중복 명시 ID는 두 번째 등장부터 debug로 격리되고 정규화 결과에 남지 않는다 (unknowns도 동일)", () => {
+  const out = normalizeSpark({
+    candidates: [
+      { id: "F1", text: "첫 번째 F1", source: "photo", grade: "C" },
+      { id: "F1", text: "두 번째 F1", source: "memo", grade: "B" },
+      { id: "F1", text: "세 번째 F1", source: "memo", grade: "C" }
+    ],
+    unknowns: [
+      { id: "U1", text: "첫 번째 U1" },
+      { id: "U1", text: "두 번째 U1" }
+    ]
+  });
+  // 첫 번째만 살아 남고 나머지는 전부 격리된다
+  assert.deepEqual(out.candidates.map((c) => c.id), ["F1"]);
+  assert.equal(out.candidates[0].text, "첫 번째 F1");
+  assert.deepEqual(out.unknowns.map((u) => u.id), ["U1"]);
+  assert.equal(out.unknowns[0].text, "첫 번째 U1");
+  // 격리 항목도 kind/reason/entry 형식을 유지한다
+  assert.equal(out.debug.length, 3);
+  assert.deepEqual(out.debug.map((d) => d.kind), ["candidate", "candidate", "unknown"]);
+  assert.equal(out.debug[0].reason, "ID가 중복됨");
+  assert.equal(out.debug[0].entry.text, "두 번째 F1");
+  assert.equal(out.debug[2].reason, "ID가 중복됨");
+  assert.equal(out.debug[2].entry.text, "두 번째 U1");
+});
+
+test("자동 ID는 기존 명시 ID와 절대 충돌하지 않는다 (입력 순서 무관)", () => {
+  // 명시 F1 뒤에 오는 무 ID 후보는 F1을 피해 F2를 받는다
+  const a = normalizeSpark({
+    candidates: [
+      { id: "F1", text: "명시", source: "photo", grade: "C" },
+      { text: "자동", source: "memo", grade: "C" }
+    ],
+    unknowns: []
+  });
+  assert.deepEqual(a.candidates.map((c) => c.id), ["F1", "F2"]);
+
+  // 순서가 반대여도 마찬가지다 — 명시 ID를 먼저 수집하기 때문이다
+  const b = normalizeSpark({
+    candidates: [
+      { text: "자동", source: "memo", grade: "C" },
+      { id: "F1", text: "명시", source: "photo", grade: "C" }
+    ],
+    unknowns: ["문자열 unknown", { id: "U1", text: "명시 unknown" }]
+  });
+  assert.deepEqual(b.candidates.map((c) => c.id), ["F2", "F1"]);
+  assert.deepEqual(b.unknowns.map((u) => u.id), ["U2", "U1"]); // U1은 명시가 쓰고, 문자열은 U2로 회피
+});
+
 // ---------------------------------------------------------------------
 console.log("결정과 파생");
 // ---------------------------------------------------------------------
@@ -165,6 +214,32 @@ test("setDecision은 계약 밖 decision과 없는 후보 id를 거부한다", (
   assert.throws(() => setDecision(rec, "F999", "confirmed"), Error);
 });
 
+test("setDecision은 정확히 하나의 후보만 변경하고, 모호한 id(중복)는 거부한다", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const next = setDecision(rec, "F1", "confirmed");
+  // 정확히 하나의 후보만 바뀌었다
+  assert.equal(
+    next.candidates.filter((c, i) => c.decision !== rec.candidates[i].decision).length,
+    1
+  );
+  assert.equal(next.candidates.filter((c) => c.decision === "confirmed").length, 1);
+  assert.equal(next.candidates.length, rec.candidates.length);
+
+  // id가 0개 또는 2개 이상 맞는 레코드는 전부 거부한다
+  assert.throws(() => setDecision(rec, "없는id", "confirmed"), Error);
+  const corrupt = {
+    mode: "live",
+    memoText: "",
+    candidates: [
+      { id: "F1", text: "a", source: "photo", grade: "C", decision: "undecided" },
+      { id: "F1", text: "b", source: "memo", grade: "C", decision: "undecided" }
+    ],
+    unknowns: [],
+    gate1Complete: false
+  };
+  assert.throws(() => setDecision(corrupt, "F1", "confirmed"), Error);
+});
+
 // ---------------------------------------------------------------------
 console.log("Gate 1 완료 조건");
 // ---------------------------------------------------------------------
@@ -183,6 +258,33 @@ test("거절도 결정이다 — 전부 거절하면 gate1Complete는 true다", 
   rec = setDecision(rec, "F1", "rejected");
   rec = setDecision(rec, "F2", "rejected");
   assert.equal(gate1Complete(rec), true);
+});
+
+test("유효하지 않은 decision 값은 결정으로 인정되지 않아 Gate가 완료되지 않는다", () => {
+  // 대조: 허용값(confirmed|rejected)만 있으면 완료다
+  const valid = restore(
+    JSON.stringify({
+      mode: "live",
+      memoText: "메모",
+      candidates: [{ id: "F1", text: "a", source: "photo", grade: "C", decision: "confirmed" }],
+      unknowns: []
+    })
+  );
+  assert.equal(gate1Complete(valid), true);
+
+  // 계약 밖 decision 값("maybe")은 undecided와 마찬가지로 미결정이다.
+  // 이 값은 모듈 경로(정규화·저장·setDecision)로는 만들 수 없는 깨진 상태라 직접 만든다.
+  const broken = {
+    mode: "live",
+    memoText: "메모",
+    candidates: [
+      { id: "F1", text: "a", source: "photo", grade: "C", decision: "confirmed" },
+      { id: "F2", text: "b", source: "memo", grade: "C", decision: "maybe" }
+    ],
+    unknowns: [],
+    gate1Complete: true
+  };
+  assert.equal(gate1Complete(broken), false);
 });
 
 test("후보가 0개면 undecided가 없어도 gate1Complete는 false다 (unknowns는 카운트에 넣지 않는다)", () => {
@@ -290,6 +392,37 @@ test("restore는 저장된 gate1Complete를 믿지 않고 후보에서 다시 �
     })
   );
   assert.equal(rec.gate1Complete, false);
+});
+
+test("restore는 후보/unknown ID가 중복된 저장 데이터를 거부한다", () => {
+  assert.equal(
+    restore(
+      JSON.stringify({
+        mode: "live",
+        memoText: "메모",
+        candidates: [
+          { id: "F1", text: "a", source: "photo", grade: "C", decision: "undecided" },
+          { id: "F1", text: "b", source: "memo", grade: "C", decision: "confirmed" }
+        ],
+        unknowns: []
+      })
+    ),
+    null
+  );
+  assert.equal(
+    restore(
+      JSON.stringify({
+        mode: "live",
+        memoText: "메모",
+        candidates: [],
+        unknowns: [
+          { id: "U1", text: "a" },
+          { id: "U1", text: "b" }
+        ]
+      })
+    ),
+    null
+  );
 });
 
 // ---------------------------------------------------------------------

@@ -28,6 +28,16 @@
     return typeof value === "string" && value.trim() !== "";
   }
 
+  // 같은 id가 두 번 이상 나오면 true — 깨진 데이터다.
+  function hasDuplicateId(items) {
+    const seen = new Set();
+    for (const item of items) {
+      if (seen.has(item.id)) return true;
+      seen.add(item.id);
+    }
+    return false;
+  }
+
   // -------------------------------------------------------------------
   // 1. DayRecord 생성
   // -------------------------------------------------------------------
@@ -50,8 +60,11 @@
   // Spark 원시 출력(JSON 파싱 "직후"의 객체)을 계약 형식으로 정규화한다.
   // 코드펜스 제거와 JSON.parse 는 API 층의 몫이고, 여기는 파싱된 객체만 받는다.
   //
-  // - 후보: id가 없으면 F1… 순으로 부여, 이미 있으면(샘플 데이터) 그 id를 유지.
-  // - unknowns: 문자열이면 {id, text}로 감싸 U1… 부여, 이미 {id, text}면 유지.
+  // - 후보: id가 없으면 F1… 순으로 부여, 이미 있으면(샘플 데이터) 그 id를 유지 —
+  //   단, 그 ID가 유일할 때만이다. 중복 명시 ID는 두 번째 등장부터 debug로 격리하고
+  //   자동 ID는 명시 ID·이미 발급한 ID와 절대 겹치지 않게 발급한다 (P0: ID 유일성).
+  // - unknowns: 문자열이면 {id, text}로 감싸 U1… 부여, 이미 {id, text}면 유지 —
+  //   후보와 같은 ID 유일성 규칙을 적용한다.
   // - 모든 후보 decision은 "undecided"로 시작한다.
   // - source/grade가 계약 밖이거나 형식이 깨진 것은 확정 가능 후보로 만들지 않고
   //   debug 배열로 분리해 반환한다 (원형 entry 와 이유를 함께 담는다).
@@ -64,7 +77,25 @@
     const rawCandidates = Array.isArray(raw.candidates) ? raw.candidates : [];
     const rawUnknowns = Array.isArray(raw.unknowns) ? raw.unknowns : [];
 
-    let factCount = 0;
+    // 0차: 명시 ID를 먼저 수집한다 — 자동 ID는 이 집합과 겹치지 않게 발급한다.
+    // (형식 검증에 걸려 debug로 격리될 항목의 ID도 예약에 포함한다.)
+    const explicitFactIds = new Set();
+    for (const entry of rawCandidates) {
+      if (entry && typeof entry === "object" && isFilledString(entry.id)) {
+        explicitFactIds.add(entry.id);
+      }
+    }
+    const explicitUnknownIds = new Set();
+    for (const entry of rawUnknowns) {
+      if (entry && typeof entry === "object" && isFilledString(entry.id)) {
+        explicitUnknownIds.add(entry.id);
+      }
+    }
+
+    // 1차: 형식 검증 + 명시 ID 중복 격리 (입력 순서대로).
+    // 명시 ID는 유일할 때만 보존된다 — 두 번째 등장부터는 확정 가능 후보가 아니다.
+    const acceptedCandidates = [];
+    const claimedFactIds = new Set();
     for (const entry of rawCandidates) {
       if (!entry || typeof entry !== "object") {
         result.debug.push({ kind: "candidate", reason: "객체가 아님", entry: entry });
@@ -78,31 +109,74 @@
         result.debug.push({ kind: "candidate", reason: "source/grade가 계약 밖", entry: entry });
         continue;
       }
-      factCount += 1;
-      result.candidates.push({
-        id: isFilledString(entry.id) ? entry.id : "F" + factCount,
-        text: entry.text,
-        source: entry.source,
-        grade: entry.grade,
-        decision: "undecided"
-      });
+      if (isFilledString(entry.id)) {
+        if (claimedFactIds.has(entry.id)) {
+          result.debug.push({ kind: "candidate", reason: "ID가 중복됨", entry: entry });
+          continue;
+        }
+        claimedFactIds.add(entry.id);
+        acceptedCandidates.push({
+          id: entry.id,
+          text: entry.text,
+          source: entry.source,
+          grade: entry.grade,
+          decision: "undecided"
+        });
+      } else {
+        acceptedCandidates.push({
+          id: null, // 2차에서 자동 발급
+          text: entry.text,
+          source: entry.source,
+          grade: entry.grade,
+          decision: "undecided"
+        });
+      }
     }
 
-    let unknownCount = 0;
+    // 2차: 자동 ID 발급 — 명시 ID(전체)와 이미 발급한 ID를 피해 F1… 순으로.
+    let factSeq = 0;
+    for (const c of acceptedCandidates) {
+      if (c.id === null) {
+        do {
+          factSeq += 1;
+          c.id = "F" + factSeq;
+        } while (explicitFactIds.has(c.id) || claimedFactIds.has(c.id));
+        claimedFactIds.add(c.id);
+      }
+      result.candidates.push(c);
+    }
+
+    // unknowns 도 같은 규칙: 문자열 감싸기 + 명시 ID 유일성 + 자동 ID 충돌 회피.
+    const acceptedUnknowns = [];
+    const claimedUnknownIds = new Set();
     for (const entry of rawUnknowns) {
       if (typeof entry === "string" && entry.trim() !== "") {
-        unknownCount += 1;
-        result.unknowns.push({ id: "U" + unknownCount, text: entry });
+        acceptedUnknowns.push({ id: null, text: entry });
       } else if (entry && typeof entry === "object" && isFilledString(entry.text)) {
-        // 샘플 데이터처럼 이미 감싸진 unknown — id가 있으면 그대로 유지한다.
-        unknownCount += 1;
-        result.unknowns.push({
-          id: isFilledString(entry.id) ? entry.id : "U" + unknownCount,
-          text: entry.text
-        });
+        if (isFilledString(entry.id)) {
+          if (claimedUnknownIds.has(entry.id)) {
+            result.debug.push({ kind: "unknown", reason: "ID가 중복됨", entry: entry });
+            continue;
+          }
+          claimedUnknownIds.add(entry.id);
+          acceptedUnknowns.push({ id: entry.id, text: entry.text });
+        } else {
+          acceptedUnknowns.push({ id: null, text: entry.text });
+        }
       } else {
         result.debug.push({ kind: "unknown", reason: "unknown 형식이 계약 밖", entry: entry });
       }
+    }
+    let unknownSeq = 0;
+    for (const u of acceptedUnknowns) {
+      if (u.id === null) {
+        do {
+          unknownSeq += 1;
+          u.id = "U" + unknownSeq;
+        } while (explicitUnknownIds.has(u.id) || claimedUnknownIds.has(u.id));
+        claimedUnknownIds.add(u.id);
+      }
+      result.unknowns.push(u);
     }
 
     return result;
@@ -112,14 +186,16 @@
   // 3. 파생 — 확정 사실과 Gate 1 완료는 저장하지 않고 매번 계산한다.
   // -------------------------------------------------------------------
 
-  // Gate 1 완료: 후보가 1개 이상이고 undecided가 0개일 때만 true.
+  // Gate 1 완료: 후보가 1개 이상이고 모든 후보가 허용된 결정값을 가질 때만 true.
+  // 허용값 = "confirmed" | "rejected" (allowlist 검사). undecided는 물론이고
+  // 계약 밖 decision 값도 결정으로 인정하지 않는다 — "undecided만 아니면 됨"이 아니다.
   // 후보 0개는 완료가 아니다. unknowns는 완료 카운트에 넣지 않는다.
   function gate1Complete(record) {
     if (!record || !Array.isArray(record.candidates)) return false;
     return (
       record.candidates.length > 0 &&
       record.candidates.every(function (c) {
-        return c && c.decision !== "undecided";
+        return !!c && (c.decision === "confirmed" || c.decision === "rejected");
       })
     );
   }
@@ -148,8 +224,8 @@
   // 4. 상태 전이 — 전부 불변: 입력 record를 수정하지 않고 새 record를 반환한다.
   // -------------------------------------------------------------------
 
-  // 결정 변경. decision이 계약 밖이거나 후보 id를 못 찾으면 던진다 —
-  // 데이터 계약 위반은 조용히 무시하지 않는다.
+  // 결정 변경. decision이 계약 밖이거나 후보 id가 정확히 하나에 일치하지 않으면
+  // (0개 또는 2개 이상) 던진다 — 데이터 계약 위반은 조용히 무시하지 않는다.
   function setDecision(record, candidateId, decision) {
     if (DECISIONS.indexOf(decision) === -1) {
       throw new TypeError("decision은 undecided|confirmed|rejected 중 하나여야 한다: " + decision);
@@ -157,16 +233,22 @@
     if (!record || !Array.isArray(record.candidates)) {
       throw new TypeError("record가 DayRecord 형식이 아니다");
     }
-    let found = false;
+    let matchCount = 0;
     const candidates = record.candidates.map(function (c) {
       if (c && c.id === candidateId) {
-        found = true;
+        matchCount += 1;
         return Object.assign({}, c, { decision: decision });
       }
       return c;
     });
-    if (!found) {
-      throw new Error("후보를 찾을 수 없다: " + candidateId);
+    if (matchCount !== 1) {
+      // 정확히 하나만 바꿔야 한다 — 0개면 없는 id, 2개 이상이면 깨진 레코드다.
+      if (matchCount === 0) {
+        throw new Error("후보를 찾을 수 없다: " + candidateId);
+      }
+      throw new Error(
+        "후보 id가 정확히 하나가 아니다: " + candidateId + " (" + matchCount + "개)"
+      );
     }
     return withDerivedState(Object.assign({}, record, { candidates: candidates }));
   }
@@ -215,6 +297,9 @@
       if (!isFilledString(u.id) || !isFilledString(u.text)) return null;
       unknowns.push({ id: u.id, text: u.text });
     }
+
+    // ID 중복은 깨진 저장 데이터다 — 복원하지 않는다.
+    if (hasDuplicateId(candidates) || hasDuplicateId(unknowns)) return null;
 
     return withDerivedState({
       mode: data.mode,
