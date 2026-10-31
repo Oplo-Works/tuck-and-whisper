@@ -10,6 +10,10 @@
   // Worker 기본 URL — 브리프 v2: "코드 상수로 그대로 쓸 것". API 키는 여기 없다 (Worker Secret에만 있다).
   const WORKER_URL = "https://taw-meta-proxy.minkyuthebuilder.workers.dev";
 
+  // 프로필 상수 (브리프). keywords는 전사 바이어스 전용이다 — 추출 프롬프트는 동결 상태이며
+  // 이름 주입 지점이 없고, 추출에서 이름은 메모 텍스트를 통해서만 들어간다.
+  const PROFILE = { childName: "신유", keywords: ["들이", "신유"] };
+
   // 브리프 v2의 동결된 추출 시스템 프롬프트 — 요약·재조립 금지, 한 글자도 바꾸지 마라.
   const SPARK_SYSTEM_PROMPT = `너는 부모가 아이와 보낸 하루의 사진과 메모에서 '사실 후보'를 추출하는 도구다.
 규칙:
@@ -55,6 +59,8 @@
   let photoUrl = null;              // 세션 전용 객체 URL (Gate 1 썸네일) — 저장 안 됨
   let extracting = false;           // 이중 제출 금지 — 실행 중에는 버튼이 비활성된다
   let lastDebugText = "";           // 형식 깨진 항목(debug) — 세션 전용, 텍스트로만 표시한다
+  let voiceFile = null;             // 세션 전용 녹음 File (m4a 그대로) — 저장 안 됨
+  let transcribing = false;         // 음성 전사 진행 중 — extracting과 독립 (S2 경로와 격리)
 
   function $(id) { return document.getElementById(id); }
 
@@ -112,6 +118,7 @@
       ? "선택한 사진: " + photoFile.name + " — 사진은 저장되지 않는다 (새로고침하면 사라진다)."
       : "";
     updateExtractButton();
+    updateVoiceButton();
     // 추출 결과가 남아 있는 상태로 Capture에 돌아왔으면 검토 계속 버튼을 보여준다
     $("back-to-gate1-btn").hidden = record.candidates.length === 0;
   }
@@ -296,6 +303,199 @@
   }
 
   // ---------------------------------------------------------------
+  // 음성 메모 전사 (브리프 단계 3 — 독립 모듈)
+  // 이 섹션이 실패해도 위의 텍스트 추출 경로(S2)는 아무 영향받지 않는다.
+  // 상태는 voiceFile/transcribing 두 개뿐이고, extract 경로와 코드·플래그가 분리되어 있다.
+  // ---------------------------------------------------------------
+
+  function onVoiceChange() {
+    const input = $("voice-input");
+    voiceFile = input.files && input.files[0] ? input.files[0] : null;
+    $("voice-status").textContent = voiceFile
+      ? "선택한 녹음: " + voiceFile.name + " (" + (voiceFile.size / 1024 / 1024).toFixed(1) + "MB)" +
+        (voiceFile.size > 32 * 1024 * 1024 ? " — 32MB 초과라 전사할 수 없다" : "")
+      : "";
+    updateVoiceButton();
+  }
+
+  function updateVoiceButton() {
+    $("transcribe-btn").disabled = transcribing || !voiceFile;
+  }
+
+  function setVoiceRunning(running) {
+    const btn = $("transcribe-btn");
+    btn.textContent = running ? "전사 중…" : "음성으로 메모 채우기";
+    btn.disabled = running;
+  }
+
+  // 디코드 없이 메타데이터로 길이를 얕게 읽는다 (실패해도 NaN — 디코드 후 권위 재검사가 있다).
+  function peekAudioDurationSeconds(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const audio = document.createElement("audio");
+      const done = (value) => {
+        URL.revokeObjectURL(url);
+        resolve(value);
+      };
+      audio.preload = "metadata";
+      audio.onloadedmetadata = function () { done(audio.duration); };
+      audio.onerror = function () { done(NaN); };
+      setTimeout(function () { done(NaN); }, 4000);
+      audio.src = url;
+    });
+  }
+
+  function durationMessage(seconds) {
+    const minutes = Math.round(seconds / 60 * 10) / 10;
+    return "녹음이 10분을 초과한다 (약 " + minutes + "분 — 상한 10분). 10분 이하 녹음으로 다시 시도할 수 있다.";
+  }
+
+  function limitError(message) {
+    const err = new Error(message);
+    err.name = "AudioLimitError";
+    return err;
+  }
+
+  // 독립 음성 함수 (브리프): file → decodeAudioData → OfflineAudioContext로 mono 24kHz
+  // 리샘플 → 16-bit PCM WAV Blob. 브라우저가 m4a(AAC)를 그대로 디코딩한다 — 사용자에게
+  // 변환을 요구하지 않는다. 길이 제한은 리샘플/인코딩 전에 검사한다.
+  async function audioFileToWav(file) {
+    const bytes = await file.arrayBuffer();
+    const decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let decoded;
+    try {
+      decoded = await decodeCtx.decodeAudioData(bytes);
+    } finally {
+      decodeCtx.close();
+    }
+    if (decoded.duration > 600) {
+      throw limitError(durationMessage(decoded.duration));
+    }
+    const offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * 24000)), 24000);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    return encodeWav16(rendered.getChannelData(0), 24000);
+  }
+
+  // mono 16-bit PCM WAV 인코더 (RIFF 헤더 44바이트 + little-endian 샘플).
+  function encodeWav16(samples, sampleRate) {
+    const dataSize = samples.length * 2;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    const writeAscii = (offset, text) => {
+      for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+    };
+    writeAscii(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeAscii(8, "WAVE");
+    writeAscii(12, "fmt ");
+    view.setUint32(16, 16, true);          // fmt 청크 크기
+    view.setUint16(20, 1, true);           // PCM
+    view.setUint16(22, 1, true);           // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true); // byte rate
+    view.setUint16(32, 2, true);           // block align
+    view.setUint16(34, 16, true);          // bits per sample
+    writeAscii(36, "data");
+    view.setUint32(40, dataSize, true);
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  async function runTranscription() {
+    if (transcribing || !voiceFile) return;
+    const file = voiceFile;
+
+    // 제한 (브리프): 변환·업로드 전에 거부하고 안내한다.
+    if (file.size > 32 * 1024 * 1024) {
+      showCaptureError(
+        "녹음 파일이 너무 크다 (현재 " + (file.size / 1024 / 1024).toFixed(1) + "MB — 상한 32MB). 더 짧은 녹음으로 다시 시도할 수 있다.",
+        ""
+      );
+      return;
+    }
+    const peeked = await peekAudioDurationSeconds(file);
+    if (isFinite(peeked) && peeked > 600) {
+      showCaptureError(durationMessage(peeked), "");
+      return;
+    }
+
+    transcribing = true;
+    setVoiceRunning(true);
+    $("voice-status").textContent = "전사 중… (몇십 초 걸릴 수 있다)";
+    try {
+      // 1) 변환 — 독립 함수. 디코딩 실패 시 브리프 문구 그대로, 메모 칸은 그대로.
+      let wavBlob;
+      try {
+        wavBlob = await audioFileToWav(file);
+      } catch (err) {
+        if (err && err.name === "AudioLimitError") {
+          showCaptureError(err.message, "");
+        } else {
+          showCaptureError(
+            "이 파일은 변환할 수 없습니다 — 텍스트 메모는 그대로 쓸 수 있다." +
+            " (원인: " + (err && err.message ? err.message : "알 수 없는 오류") + ")",
+            ""
+          );
+        }
+        return;
+      }
+
+      // 2) 업로드 — multipart를 정확히 이 형태로 조립한다. Content-Type은 절대 직접 설정하지 않는다
+      //    (브라우저가 boundary를 포함해 설정한다).
+      const requestData = {
+        model: "muse-voice-transcribe-1.0",
+        audioEncoding: "WAV",
+        mode: "PUSH_TO_TALK",
+        languageBias: ["Korean"],
+        keywords: PROFILE.keywords
+      };
+      const fd = new FormData();
+      fd.append('request', new Blob([JSON.stringify(requestData)], { type: 'application/json' }), 'request.json');
+      fd.append('audio', wavBlob, 'audio.wav');
+      const response = await fetch(WORKER_URL + "/api/voice", { method: "POST", body: fd });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+      }
+      let payload;
+      try {
+        payload = JSON.parse(rawText);
+      } catch (err) {
+        throw new Error("응답이 JSON이 아니다");
+      }
+      const transcript = payload && payload.transcript;
+      if (typeof transcript !== "string" || transcript.trim() === "") {
+        throw new Error("응답에 transcript가 없거나 비어 있다");
+      }
+
+      // 3) 성공 — 응답의 transcript로 메모 칸을 교체한다 (이어 붙이지 않는다).
+      //    메모 교체 = 메모 수정 — 기존 무효화 규칙을 그대로 탄다 (후보가 있으면 전부 비워진다).
+      $("memo-input").value = transcript;
+      onMemoInput();
+      $("voice-status").textContent = "전사 완료 — 메모를 전사 결과로 교체했다.";
+    } catch (err) {
+      // 실패 계약 (S2와 동일): 배너 + 입력 유지 + 재시도 가능
+      showCaptureError(
+        "전사에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") +
+        " — 메모와 녹음 선택은 그대로 남아 있다. 다시 시도할 수 있다.",
+        ""
+      );
+    } finally {
+      transcribing = false;
+      setVoiceRunning(false);
+    }
+  }
+
+  // ---------------------------------------------------------------
   // Gate 1 화면
   // ---------------------------------------------------------------
 
@@ -462,10 +662,13 @@
       photoUrl = null;
     }
     photoFile = null;
+    voiceFile = null;
     lastDebugText = "";
     persist();
     hideCaptureError();
     $("capture-notice").hidden = true;
+    $("voice-status").textContent = "";
+    $("voice-input").value = "";
     renderCaptureScreen();
     showScreen("screen-capture");
   }
@@ -482,6 +685,7 @@
       photoUrl = null;
     }
     photoFile = null;
+    voiceFile = null;
     lastDebugText = "";
     persist();
     hideCaptureError();
@@ -497,6 +701,8 @@
     $("photo-input").addEventListener("change", onPhotoChange);
     $("memo-input").addEventListener("input", onMemoInput);
     $("extract-btn").addEventListener("click", runExtraction);
+    $("voice-input").addEventListener("change", onVoiceChange);
+    $("transcribe-btn").addEventListener("click", runTranscription);
     $("load-sample-btn").addEventListener("click", loadSampleDay);
     $("back-to-gate1-btn").addEventListener("click", function () {
       renderGate1Screen();

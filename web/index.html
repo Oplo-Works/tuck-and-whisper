@@ -66,6 +66,12 @@
       <div id="photo-status" class="hint"></div>
       <label for="memo-input">메모</label>
       <textarea id="memo-input" rows="4" placeholder="예: 한국 할아버지 집에서, 태어난 지 한 달 된 강아지 들이랑 밭길에서 놀았어."></textarea>
+      <label for="voice-input">음성 메모 (녹음 파일 — m4a 그대로 선택해도 된다)</label>
+      <input type="file" id="voice-input" accept="audio/*,.m4a">
+      <div>
+        <button id="transcribe-btn" disabled>음성으로 메모 채우기</button>
+      </div>
+      <div id="voice-status" class="hint"></div>
       <div>
         <button id="extract-btn" class="primary" disabled>추출</button>
         <button id="load-sample-btn">Load sample day</button>
