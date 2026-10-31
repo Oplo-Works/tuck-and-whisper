@@ -29,6 +29,14 @@
   // 질문 카드 초안 시스템 프롬프트 (패킷에 동결문이 없어 브리핑 프롬프트와 같은 원칙으로 작성 — 가정 목록 참조).
   const QUESTION_SYSTEM_PROMPT = "너는 부모가 아이에게 물어볼 취침 질문 카드 작성자다. 입력은 아직 알 수 없는 질문(unknown) 하나와 그 전제가 되는 확정 사실 목록(id와 text)이다. 규칙: 1) 입력에 없는 사실·감정·인물을 만들지 마라. 2) unknown을 아이에게 물기 좋은 짧은 한 문장으로 다듬어라. 3) 확정 사실을 다시 설명하지 마라. 4) 출력은 JSON만: {\"text\":\"...\"}";
 
+  // 페이지 문장 합성 시스템 프롬프트 (S5 패킷 동결 — 그대로 쓸 것).
+  const PAGE_SYSTEM_PROMPT = "너는 아이에게 읽어 줄 취침 그림책 페이지의 문장을 쓰는 작가다. 입력은 부모가 확정한 사실 목록뿐이다(id와 text). 규칙: 1) 입력에 없는 사실·감정·원인·인물·대사를 만들지 마라. 2) 모든 문장은 근거가 된 사실의 id를 factIds에 인용해라. 인용 없는 문장은 금지. 3) 문장은 짧고 따뜻하게, 아이가 듣고 따라 할 수 있는 쉬운 말로 — 사실의 내용은 바꾸지 말고 어미와 리듬만 다듬어라. 4) 4~7문장. 5) 출력은 JSON만: {\"sentences\":[{\"text\":\"...\",\"factIds\":[\"F1\"]}]}";
+
+  // 스타일화 프롬프트 (S5 패킷 동결 — 스파이크 2 실증문에서 주어만 일반화). 절대 바꾸지 마라.
+  const IMAGE_PROMPT = "Restyle this photo as a warm picture-book illustration for a children's bedtime story. Keep the same child and the same subjects, with their faces recognizable as the same individuals, the same pose and the same composition. Do not add or remove any person, animal, or object. Soft watercolor storybook style.";
+  // 이미지 모델 id는 문서화돼 있지 않아 스파이크 계열 명명 규칙으로 추정했다 (가정 목록 참조).
+  const IMAGE_MODEL = "muse-image-1.0";
+
   // 브리프의 스파이크 실제 출력 그대로 — 등급을 임의로 고치지 않는다 (F11~F13의 B 포함).
   const SAMPLE_DAY = {
     child: { name: "신유", age: 7 },
@@ -74,11 +82,20 @@
   let premiseSelection = [];        // 질문 카드 전제 사실 선택 — 세션 전용
   let selectedUnknownId = "";       // 질문 카드 unknown 선택 — 세션 전용 (기본값: 마지막 unknown)
   let previewRawSnippet = "";       // 합성 실패 시 모델 원문 스니펫 — 세션 전용 디버그
+  let photoDataUrl = null;          // 세션 전용 추출용 data URL (스타일화 재사용) — 저장 절대 금지
+  let pageSynthesizing = false;     // 페이지 문장 합성 진행 중 (S5)
+  let pageFallbackNotice = false;   // 페이지 폴백 안내 — 세션 전용
+  let pageError = "";               // 취침 화면 오류 — 세션 전용
+  let pageRawSnippet = "";          // 페이지 합성 실패 원문 스니펫 — 세션 전용
+  let stylizing = false;            // 스타일화 진행 중 (S5)
+  let styleImageUrl = null;         // 스타일화 결과 — 세션 표시 전용 (레코드에 넣지 않는다)
+  let styleError = "";              // 스타일화 오류 — 세션 전용
+  let styleRawSnippet = "";         // 스타일화 실패 원문 스니펫 — 세션 전용
 
   function $(id) { return document.getElementById(id); }
 
   // --- 화면 전환 (단일 헬퍼) ---
-  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed", "screen-preview"];
+  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed", "screen-preview", "screen-bedtime"];
   function showScreen(id) {
     for (const sid of SCREENS) {
       $(sid).hidden = sid !== id;
@@ -259,6 +276,7 @@
     let rawText = "";
     try {
       const dataUrl = await preparePhoto(photoFile);
+      photoDataUrl = dataUrl; // 세션 전용 보관 — 스타일화에서 재사용, 저장은 절대 안 한다
       const response = await fetch(WORKER_URL + "/api/spark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1029,6 +1047,361 @@
   }
 
   // ---------------------------------------------------------------
+  // 취침 페이지 (S5) — 문장 합성(LEAK 검사 포함) + 스타일화 + 증언
+  // 증언은 합성 입력에 절대 들어가지 않는다 — 합성은 synthesisFacts만 쓴다.
+  // ---------------------------------------------------------------
+
+  function enterBedtime() {
+    pageError = "";
+    const confirmed = T.synthesisFacts(record);
+    renderBedtimeScreen();
+    showScreen("screen-bedtime");
+    if (confirmed.length === 0) return;
+    // 진입 가드: 저장된 pageSentences의 factIds가 현재 확정 집합의 부분집합이 아니면
+    // 버리고 재합성 상태로 진입한다 (프리뷰 가드와 동일).
+    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
+    const usable = record.pageSentences && record.pageSentences.length > 0 &&
+      record.pageSentences.every(function (s) {
+        return Array.isArray(s.factIds) && s.factIds.length > 0 &&
+          s.factIds.every(function (id) { return confirmedIds.has(id); });
+      });
+    if (!usable) {
+      record = Object.assign({}, record, { pageSentences: [] });
+      pageFallbackNotice = false;
+      persist();
+      synthesizePageWithRetry();
+    }
+  }
+
+  function renderBedtimeScreen() {
+    $("bedtime-mode").textContent = record.mode === "sample" ? "Sample day" : "라이브 하루";
+    const confirmed = T.synthesisFacts(record);
+    const noFacts = confirmed.length === 0;
+    $("bedtime-no-facts").hidden = !noFacts;
+    $("bedtime-main").hidden = noFacts;
+    if (noFacts) return;
+
+    renderBedtimeImageArea();
+    $("bedtime-fallback-notice").hidden = !(pageFallbackNotice && record.pageSentences.length > 0);
+    $("bedtime-synth-status").textContent = pageSynthesizing ? "페이지 문장을 만들고 있다…" : "";
+    $("bedtime-error").hidden = pageError === "";
+    $("bedtime-error").textContent = pageError;
+    $("bedtime-debug").hidden = pageRawSnippet === "";
+    $("bedtime-debug-body").textContent = pageRawSnippet; // 모델 원문 — 텍스트로만
+    $("recompose-btn").disabled = pageSynthesizing || stylizing;
+
+    const factsById = {};
+    for (const f of confirmed) factsById[f.id] = f.text;
+    const wrap = $("page-sentences");
+    wrap.textContent = "";
+    if (record.pageSentences.length > 0) {
+      for (const sentence of record.pageSentences) {
+        wrap.appendChild(makePageSentence(sentence, factsById));
+      }
+      $("page-empty-hint").hidden = true;
+    } else {
+      $("page-empty-hint").hidden = pageSynthesizing;
+    }
+
+    renderBedtimeQuestion();
+    renderTestimonyList();
+  }
+
+  // 스타일화 이미지 영역 — 라이브 전용, 결과는 세션 표시 전용이다.
+  function renderBedtimeImageArea() {
+    const area = $("bedtime-image-area");
+    area.textContent = "";
+    if (record.mode === "sample") {
+      area.appendChild(makePhotoPlaceholder("Sample day — no photo"));
+      return;
+    }
+    if (styleImageUrl) {
+      const img = document.createElement("img");
+      img.className = "photo-thumb";
+      img.alt = "오늘의 그림 (세션 전용 — 저장되지 않음)";
+      img.src = styleImageUrl;
+      area.appendChild(img);
+    } else if (photoDataUrl) {
+      const btn = document.createElement("button");
+      btn.id = "stylize-btn";
+      btn.textContent = stylizing ? "그림 만드는 중…" : "사진을 그림으로 바꾸기";
+      btn.disabled = stylizing;
+      btn.addEventListener("click", runStylization);
+      area.appendChild(btn);
+      const hint = document.createElement("p");
+      hint.className = "hint";
+      hint.textContent = "스타일화는 세션 안에서만 표시된다 — 저장되지 않는다.";
+      area.appendChild(hint);
+    } else {
+      const notice = document.createElement("p");
+      notice.className = "hint";
+      notice.textContent = "사진은 저장되지 않아 그림은 새로고침하면 사라져요 — 문장만 표시한다.";
+      area.appendChild(notice);
+    }
+    if (styleError !== "") {
+      const err = document.createElement("div");
+      err.className = "error";
+      err.textContent = styleError;
+      area.appendChild(err);
+      if (styleRawSnippet !== "") {
+        const pre = document.createElement("pre");
+        pre.className = "debug";
+        pre.textContent = styleRawSnippet;
+        area.appendChild(pre);
+      }
+    }
+  }
+
+  // 페이지 문장 카드 — 각 문장 아래에 인용한 사실의 원문을 기본으로 펼쳐 보여준다
+  // (칩만 두지 않는다 — 출처가 눈에 보여야 한다).
+  function makePageSentence(sentence, factTextById) {
+    const card = document.createElement("div");
+    card.className = "briefing-line";
+    const text = document.createElement("p");
+    text.className = "candidate-text";
+    text.textContent = sentence.text; // 모델 텍스트 — textContent로만
+    card.appendChild(text);
+    for (const factId of sentence.factIds) {
+      const prov = document.createElement("div");
+      prov.className = "provenance";
+      prov.textContent = "원문 (" + factId + "): " + (factTextById[factId] || "(현재 확정 목록에 없는 사실이다)");
+      card.appendChild(prov);
+    }
+    return card;
+  }
+
+  // 페이지 문장 합성 — S4 루프 재사용 + LEAK 검사 합침.
+  // 완화 파싱 → (위반·누출) 1회 교정 재합성 → 재실패 시 폴백(확정 사실 원문).
+  async function synthesizePageWithRetry() {
+    if (pageSynthesizing) return;
+    const confirmed = T.synthesisFacts(record);
+    if (confirmed.length === 0) return;
+    pageSynthesizing = true;
+    pageError = "";
+    pageRawSnippet = "";
+    renderBedtimeScreen();
+    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 늦은 응답 가드
+    try {
+      const factsById = {};
+      for (const f of confirmed) factsById[f.id] = f;
+      let correctionNote = null;
+      let sentences = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (record !== token.record) return; // 세션이 바뀌었다 — 조용히 중단
+        let parseFailed = false;
+        try {
+          sentences = await requestPageSentences(confirmed, correctionNote);
+        } catch (err) {
+          if (err && err.rawSnippet) {
+            parseFailed = true;
+            pageRawSnippet = err.rawSnippet;
+            correctionNote = "이전 답안은 깨진 JSON이었다 (원문 일부: " + err.rawSnippet.slice(0, 160) + "). 설명 없이 JSON만 출력하라.";
+            sentences = null;
+          } else {
+            throw err; // 네트워크/HTTP 오류 — 배너로
+          }
+        }
+        if (!parseFailed) {
+          const composition = T.validateComposition(sentences, confirmed.map(function (f) { return f.id; }));
+          const leaks = T.checkLeaks(sentences, factsById);
+          const all = composition.violations.concat(leaks.violations);
+          if (all.length === 0) break;
+          correctionNote = all.map(function (v) {
+            return "- 문장 " + (v.index + 1) + " (" + v.text + "): " + v.reason;
+          }).join("\n");
+          sentences = null;
+        }
+      }
+      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (sentences) {
+        applyPageSentences(sentences, false);
+      } else {
+        // 1회 재합성 후에도 실패 — 폴백: 확정 사실 원문이 곧 페이지 문장
+        applyPageSentences(confirmed.map(function (f) {
+          return { text: f.text, factIds: [f.id] };
+        }), true);
+      }
+    } catch (err) {
+      if (record !== token.record) return;
+      pageError = "페이지 합성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+      pageRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
+    } finally {
+      pageSynthesizing = false;
+      renderBedtimeScreen();
+    }
+  }
+
+  async function requestPageSentences(confirmed, correctionNote) {
+    let userContent = JSON.stringify(confirmed.map(function (f) {
+      return { id: f.id, text: f.text };
+    }));
+    if (correctionNote) {
+      userContent += "\n\n이전 답안은 아래 이유로 기각됐다 — 이번에는 규칙을 지켜라:\n" + correctionNote;
+    }
+    const response = await fetch(WORKER_URL + "/api/spark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "muse-spark-1.3",
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: PAGE_SYSTEM_PROMPT },
+          { role: "user", content: userContent }
+        ]
+      })
+    });
+    const rawText = await response.text();
+    if (!response.ok) {
+      throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+    }
+    let payload;
+    try {
+      payload = JSON.parse(rawText);
+    } catch (err) {
+      throw new Error("응답이 JSON이 아니다");
+    }
+    const content = payload && payload.choices && payload.choices[0] &&
+      payload.choices[0].message ? payload.choices[0].message.content : undefined;
+    if (typeof content !== "string") {
+      throw new Error("응답에 choices[0].message.content가 없다");
+    }
+    const raw = parseModelJson(content, "페이지 답안");
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.sentences)) {
+      const err = new Error("응답 구조가 계약과 다르다 (sentences가 배열이 아님)");
+      err.rawSnippet = content.slice(0, 400);
+      throw err;
+    }
+    return raw.sentences.map(function (sentence) {
+      return {
+        text: sentence && typeof sentence.text === "string" ? sentence.text : "",
+        factIds: sentence && Array.isArray(sentence.factIds)
+          ? sentence.factIds.filter(function (id) { return typeof id === "string"; })
+          : []
+      };
+    });
+  }
+
+  function applyPageSentences(sentences, isFallback) {
+    record = Object.assign({}, record, { pageSentences: sentences });
+    pageFallbackNotice = isFallback;
+    persist();
+  }
+
+  // 질문 카드는 프리뷰에서 만든 것을 그대로 표시한다 (수정은 프리뷰의 몫).
+  function renderBedtimeQuestion() {
+    const wrap = $("bedtime-question");
+    wrap.textContent = "";
+    const card = record.questionCard;
+    if (!card || card.text.trim() === "") {
+      const notice = document.createElement("p");
+      notice.className = "hint";
+      notice.textContent = "프리뷰에서 질문 카드를 만들 수 있어요.";
+      wrap.appendChild(notice);
+      return;
+    }
+    const item = document.createElement("div");
+    item.className = "briefing-line";
+    const text = document.createElement("p");
+    text.className = "candidate-text";
+    text.textContent = card.text; // 모델+부모 수정 텍스트 — textContent로만
+    item.appendChild(text);
+    const meta = document.createElement("div");
+    meta.className = "chips";
+    meta.appendChild(makeChip("unknown: " + card.unknownId, ""));
+    item.appendChild(meta);
+    wrap.appendChild(item);
+  }
+
+  // 증언 — {text, at}로 testimony에 추가 (S4a 직렬화 사용).
+  // 증언은 합성 입력에 절대 들어가지 않는다 (이 파일 어디에도 testimony를 payload에 넣지 않는다).
+  function saveTestimony() {
+    const input = $("testimony-input");
+    const text = input.value.trim();
+    if (text === "") return;
+    record = Object.assign({}, record, {
+      testimony: record.testimony.concat([{ text: text, at: Date.now() }])
+    });
+    persist();
+    input.value = "";
+    renderBedtimeScreen();
+  }
+
+  function renderTestimonyList() {
+    const list = $("testimony-list");
+    list.textContent = "";
+    for (const entry of record.testimony) {
+      const item = document.createElement("div");
+      item.className = "testimony-item";
+      const time = document.createElement("span");
+      time.className = "testimony-time";
+      time.textContent = new Date(entry.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+      const text = document.createElement("span");
+      text.textContent = entry.text; // 부모가 적은 증언 — textContent로만
+      item.appendChild(time);
+      item.appendChild(text);
+      list.appendChild(item);
+    }
+  }
+
+  // 스타일화 (라이브 전용) — 동결 프롬프트 사용. 결과는 세션 표시 전용이고
+  // 레코드에 넣지 않고 저장하지 않는다. 응답 형식은 문서화돼 있지 않아 흔한 형태를 찾는다.
+  async function runStylization() {
+    if (stylizing) return;
+    if (record.mode !== "live" || !photoDataUrl) return;
+    stylizing = true;
+    styleError = "";
+    styleRawSnippet = "";
+    renderBedtimeScreen();
+    const token = T.beginExtraction(record);
+    try {
+      // /api/image JSON 계약 (Worker 에러 메시지로 확인): prompt 필수 + images 배열
+      // (항목에 image_url 또는 file_id). messages 필드는 이미지 편집에서 지원하지 않는다.
+      const response = await fetch(WORKER_URL + "/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: IMAGE_MODEL,
+          prompt: IMAGE_PROMPT,
+          images: [{ image_url: photoDataUrl }]
+        })
+      });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+      }
+      let payload;
+      try {
+        payload = JSON.parse(rawText);
+      } catch (err) {
+        throw new Error("응답이 JSON이 아니다");
+      }
+      let imageData = payload && payload.data && payload.data[0] &&
+        (payload.data[0].b64_json || payload.data[0].url);
+      if (!imageData) imageData = payload && (payload.image || payload.url || payload.b64_json);
+      if (typeof imageData !== "string" || imageData === "") {
+        const err = new Error("응답에서 이미지를 찾지 못했다 (응답 형식 미문서)");
+        err.rawSnippet = rawText.slice(0, 400);
+        throw err;
+      }
+      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (styleImageUrl) {
+        URL.revokeObjectURL(styleImageUrl);
+        styleImageUrl = null;
+      }
+      styleImageUrl = imageData.indexOf("data:") === 0 || imageData.indexOf("blob:") === 0 || imageData.indexOf("http") === 0
+        ? imageData
+        : "data:image/png;base64," + imageData;
+    } catch (err) {
+      if (record !== token.record) return;
+      styleError = "스타일화에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류");
+      styleRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
+    } finally {
+      stylizing = false;
+      renderBedtimeScreen();
+    }
+  }
+
+  // ---------------------------------------------------------------
   // 교체 전이: 새 하루 / 샘플 로드 (병합이 아니라 완전 교체다)
   // ---------------------------------------------------------------
 
@@ -1045,6 +1418,18 @@
     briefingFallbackNotice = false;
     premiseSelection = [];
     selectedUnknownId = "";
+    if (photoDataUrl) photoDataUrl = null; // 세션 data URL도 폐기
+    if (styleImageUrl) {
+      URL.revokeObjectURL(styleImageUrl);
+      styleImageUrl = null;
+    }
+    pageSynthesizing = false;
+    pageFallbackNotice = false;
+    pageError = "";
+    pageRawSnippet = "";
+    stylizing = false;
+    styleError = "";
+    styleRawSnippet = "";
     persist();
     hideCaptureError();
     $("capture-notice").hidden = true;
@@ -1072,6 +1457,18 @@
     briefingFallbackNotice = false;
     premiseSelection = [];
     selectedUnknownId = "";
+    if (photoDataUrl) photoDataUrl = null;
+    if (styleImageUrl) {
+      URL.revokeObjectURL(styleImageUrl);
+      styleImageUrl = null;
+    }
+    pageSynthesizing = false;
+    pageFallbackNotice = false;
+    pageError = "";
+    pageRawSnippet = "";
+    stylizing = false;
+    styleError = "";
+    styleRawSnippet = "";
     persist();
     hideCaptureError();
     renderGate1Screen();
@@ -1124,6 +1521,20 @@
     $("draft-btn").addEventListener("click", runQuestionDraft);
     $("question-unknown").addEventListener("change", onUnknownChange);
     $("question-text").addEventListener("input", onQuestionTextEdit);
+
+    $("open-bedtime-btn").addEventListener("click", enterBedtime);
+    $("back-to-preview-btn").addEventListener("click", function () {
+      renderPreviewScreen();
+      showScreen("screen-preview");
+    });
+    $("recompose-btn").addEventListener("click", function () {
+      pageError = "";
+      synthesizePageWithRetry();
+    });
+    $("save-testimony-btn").addEventListener("click", saveTestimony);
+    $("testimony-input").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") saveTestimony();
+    });
   }
 
   // ---------------------------------------------------------------

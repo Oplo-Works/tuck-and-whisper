@@ -51,6 +51,10 @@
   .fact-detail{margin-top:6px;color:var(--dim);font-size:13px;background:var(--bg);border-radius:8px;padding:8px}
   .chip-fact{cursor:pointer}
   .chip-premise-on{color:var(--accent2);border-color:var(--accent2)}
+  .provenance{margin-top:6px;color:var(--dim);font-size:12px;background:var(--bg);border-radius:8px;padding:8px;white-space:pre-wrap}
+  .testimony-item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0;font-size:14px}
+  .testimony-time{color:var(--dim);font-size:11px;margin-right:8px}
+  input[type=text]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px;font-size:14px}
   footer{text-align:center;color:var(--dim);font-size:12px;padding:12px 0 32px}
 </style>
 </head>
@@ -165,6 +169,7 @@
         <button id="draft-btn">질문 초안 만들기</button>
         <textarea id="question-text" rows="2" readonly placeholder="초안을 만들면 여기서 수정할 수 있다"></textarea>
         <p id="question-card-meta" class="hint"></p>
+        <button id="open-bedtime-btn" class="primary">취침 페이지</button>
       </div>
       <div>
         <button id="back-to-confirmed-btn">← 확정 목록</button>
@@ -172,8 +177,41 @@
     </div>
   </section>
 
+  <!-- 화면 5: 취침 페이지 (문장·스타일화·증언) -->
+  <section id="screen-bedtime" hidden>
+    <div class="card">
+      <h2>취침 페이지</h2>
+      <span class="chip" id="bedtime-mode"></span>
+      <div id="bedtime-no-facts" class="notice" hidden>합성할 사실이 없다 — 모든 후보를 거절했다.</div>
+      <div id="bedtime-main">
+        <div id="bedtime-image-area"></div>
+        <div id="bedtime-fallback-notice" class="notice" hidden>오늘은 꾸밈없이, 확정한 사실 그대로예요</div>
+        <p id="bedtime-synth-status" class="hint"></p>
+        <div id="bedtime-error" class="error" hidden></div>
+        <details id="bedtime-debug" class="debug" hidden>
+          <summary>디버그: 모델 원문 (개발자용)</summary>
+          <pre id="bedtime-debug-body"></pre>
+        </details>
+        <h3>오늘 이야기</h3>
+        <div id="page-sentences"></div>
+        <p id="page-empty-hint" class="hint" hidden>아직 페이지 문장이 없다.</p>
+        <button id="recompose-btn">다시 합성</button>
+        <h3>질문 카드</h3>
+        <div id="bedtime-question"></div>
+        <h3>증언</h3>
+        <p class="hint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
+        <input type="text" id="testimony-input" placeholder="아이의 대답 한 마디">
+        <button id="save-testimony-btn">기록</button>
+        <div id="testimony-list"></div>
+      </div>
+      <div>
+        <button id="back-to-preview-btn">← 프리뷰</button>
+      </div>
+    </div>
+  </section>
+
 </main>
-<footer>build: sat-core-v2</footer>
+<footer>build: s5-page</footer>
 <script src="core.js"></script>
 <script src="app.js"></script>
 </body>

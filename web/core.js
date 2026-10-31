@@ -271,6 +271,48 @@
     return { ok: violations.length === 0, violations: violations };
   }
 
+  // LEAK 검사 금지 어휘 (S5 — 동결): 감정·인과·서사를 암시하는 표현.
+  // 아이에게 읽어 줄 문장이 확정 사실 원문에 없는 이런 말로 흐르는 것을 막는다.
+  const LEAK_WORDS = [
+    "신나", "즐거", "행복", "슬프", "슬퍼", "무서", "때문에", "그래서",
+    "친구", "함께", "놀랐", "놀라", "기쁘", "울었", "울며", "사랑"
+  ];
+
+  // LEAK 검사 (결정적 — 모델 호출 없음): 문장에 금지 어휘가 있는데, 그 문장이 인용한
+  // 사실들의 원문 어디에도 없으면 위반. factsById는 id → 사실 객체({text}) 또는
+  // id → 원문 문자열 둘 다 받는다. 반환은 validateComposition과 같은 모양이다.
+  function checkLeaks(sentences, factsById) {
+    const violations = [];
+    if (!Array.isArray(sentences)) {
+      violations.push({ index: -1, text: "", reason: "문장 배열이 아니다" });
+      return { ok: false, violations: violations };
+    }
+    sentences.forEach(function (sentence, index) {
+      if (!sentence || typeof sentence !== "object" || typeof sentence.text !== "string") {
+        violations.push({ index: index, text: "", reason: "형식이 깨진 문장이다" });
+        return;
+      }
+      const cited = Array.isArray(sentence.factIds) ? sentence.factIds : [];
+      let originalTexts = "";
+      for (const id of cited) {
+        const fact = factsById ? factsById[id] : null;
+        if (typeof fact === "string") originalTexts += fact + "\n";
+        else if (fact && typeof fact === "object" && typeof fact.text === "string") originalTexts += fact.text + "\n";
+      }
+      const leaked = LEAK_WORDS.filter(function (word) {
+        return sentence.text.indexOf(word) !== -1 && originalTexts.indexOf(word) === -1;
+      });
+      if (leaked.length > 0) {
+        violations.push({
+          index: index,
+          text: sentence.text,
+          reason: "원문에 없는 표현이 들어갔다: " + leaked.join(", ")
+        });
+      }
+    });
+    return { ok: violations.length === 0, violations: violations };
+  }
+
   // -------------------------------------------------------------------
   // 4. 상태 전이 — 전부 불변: 입력 record를 수정하지 않고 새 record를 반환한다.
   // -------------------------------------------------------------------
@@ -520,6 +562,7 @@
     confirmedFacts: confirmedFacts,
     synthesisFacts: synthesisFacts,
     validateComposition: validateComposition,
+    checkLeaks: checkLeaks,
     gate1Complete: gate1Complete,
     invalidateExtraction: invalidateExtraction,
     serialize: serialize,

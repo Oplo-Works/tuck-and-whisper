@@ -11,6 +11,7 @@ const {
   confirmedFacts,
   synthesisFacts,
   validateComposition,
+  checkLeaks,
   gate1Complete,
   invalidateExtraction,
   serialize,
@@ -559,6 +560,50 @@ test("synthesisFacts는 confirmedFacts와 같고 거절·미결정을 제외한�
   rec = setDecision(rec, "F2", "rejected"); // 거절도 제외
   assert.deepEqual(synthesisFacts(rec).map((f) => f.id), ["F1"]);
   assert.deepEqual(synthesisFacts(rec), confirmedFacts(rec)); // 명시적 별칭
+});
+
+// ---------------------------------------------------------------------
+console.log("S5 LEAK 검사");
+// ---------------------------------------------------------------------
+
+test("checkLeaks: 금지 어휘가 인용 원문에 없으면 위반이다", () => {
+  const result = checkLeaks(
+    [{ text: "신나게 밭길을 달렸다", factIds: ["F1"] }],
+    { F1: { text: "밭길에서 놀았다" } }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.violations.length, 1);
+  assert.ok(result.violations[0].reason.includes("신나"));
+});
+
+test("checkLeaks: 같은 어휘라도 인용 원문에 있으면 통과다", () => {
+  const result = checkLeaks(
+    [{ text: "친구와 함께 놀았다", factIds: ["F1"] }],
+    { F1: { text: "친구와 함께 밭길을 걸었다" } }
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.violations, []);
+});
+
+test("checkLeaks: 인용 없는 문장의 금지 어휘는 무조건 위반이다", () => {
+  const result = checkLeaks(
+    [
+      { text: "무서운 강아지", factIds: ["F1"] }, // 무서 — 원문에 없음
+      { text: "행복한 하루", factIds: [] }, // 인용 없음 → 원문 근거 자체가 없다
+      { text: "밭길에서 놀았다", factIds: ["F1"] } // 깨끗함
+    ],
+    { F1: { text: "밭길에서 놀았다" } }
+  );
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.violations.map((v) => v.index), [0, 1]);
+});
+
+test("checkLeaks: 문자열 원문(id → text) 형태도 받고, 깨진 배열은 위반 처리한다", () => {
+  const ok = checkLeaks([{ text: "밭길에서 놀았다", factIds: ["F1"] }], { F1: "밭길에서 놀았다" });
+  assert.equal(ok.ok, true);
+  const broken = checkLeaks("배열 아님", {});
+  assert.equal(broken.ok, false);
+  assert.equal(broken.violations[0].reason, "문장 배열이 아니다");
 });
 
 // ---------------------------------------------------------------------
