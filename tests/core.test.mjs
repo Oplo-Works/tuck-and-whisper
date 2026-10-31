@@ -1,0 +1,347 @@
+// S1a 단위 테스트 — 데이터 계약 층 (web/core.js)
+// 실행: node tests/core.test.mjs  (Node 내장 assert만 사용, 외부 의존성 없음)
+import assert from "node:assert/strict";
+import TawCore from "../web/core.js";
+
+const {
+  STORAGE_KEY,
+  createDayRecord,
+  normalizeSpark,
+  setDecision,
+  confirmedFacts,
+  gate1Complete,
+  invalidateExtraction,
+  serialize,
+  restore,
+  beginExtraction,
+  applyExtraction
+} = TawCore;
+
+let passed = 0;
+const failures = [];
+
+function test(name, fn) {
+  try {
+    fn();
+    passed += 1;
+    console.log("  ok    " + name);
+  } catch (err) {
+    failures.push(name);
+    console.log("  FAIL  " + name);
+    console.log("        " + (err && err.message ? err.message : err));
+  }
+}
+
+// 헬퍼 — raw Spark 출력을 새 레코드에 적용해 DayRecord를 만든다 (화면 층이 쓸 실제 경로).
+function recordFromRaw(memoText, raw) {
+  const base = Object.assign(createDayRecord(), { memoText: memoText });
+  const token = beginExtraction(base);
+  return applyExtraction(base, token, raw);
+}
+
+const SPARK_TWO = {
+  candidates: [
+    { text: "아이가 풀밭 길 위에 서 있다", source: "photo", grade: "C" },
+    { text: "밭길에서 놀았다", source: "memo", grade: "B" }
+  ],
+  unknowns: ["강아지의 견종은 무엇인가?", "사진에서 아이의 기분은 확인되는가?"]
+};
+
+// ---------------------------------------------------------------------
+console.log("normalize");
+// ---------------------------------------------------------------------
+
+test("createDayRecord는 계약 그대로의 빈 DayRecord를 반환한다", () => {
+  assert.deepEqual(createDayRecord(), {
+    mode: "live",
+    memoText: "",
+    candidates: [],
+    unknowns: [],
+    gate1Complete: false
+  });
+});
+
+test("문자열 unknown이 {id, text}로 감싸지고 U1… 순서로 id가 붙는다", () => {
+  const out = normalizeSpark({ candidates: [], unknowns: ["견종은?", "성별은?"] });
+  assert.deepEqual(out.unknowns, [
+    { id: "U1", text: "견종은?" },
+    { id: "U2", text: "성별은?" }
+  ]);
+});
+
+test("후보에 F1… 순서로 id가 붙고 decision은 전부 undecided로 시작한다", () => {
+  const out = normalizeSpark(SPARK_TWO);
+  assert.deepEqual(out.candidates.map((c) => c.id), ["F1", "F2"]);
+  assert.deepEqual(
+    out.candidates.map((c) => c.decision),
+    ["undecided", "undecided"]
+  );
+  // 후보 객체는 계약의 5개 필드만 가진다
+  assert.deepEqual(Object.keys(out.candidates[0]).sort(), [
+    "decision",
+    "grade",
+    "id",
+    "source",
+    "text"
+  ]);
+});
+
+test("source/grade가 계약 밖이거나 깨진 후보는 debug로 분리되고 확정 가능 후보가 아니다", () => {
+  const out = normalizeSpark({
+    candidates: [
+      { text: "정상 후보", source: "photo", grade: "C" },
+      { text: "source가 계약 밖", source: "video", grade: "C" },
+      { text: "grade가 계약 밖", source: "memo", grade: "A" },
+      { text: "", source: "memo", grade: "C" },
+      "아예 문자열"
+    ],
+    unknowns: []
+  });
+  assert.equal(out.candidates.length, 1);
+  assert.equal(out.candidates[0].text, "정상 후보");
+  assert.equal(out.candidates[0].id, "F1"); // 남은 후보 기준으로 순서 부여
+  assert.equal(out.debug.length, 4);
+  assert.equal(out.debug[0].entry.source, "video"); // 원형이 debug에 보존된다
+});
+
+test("이미 id가 있는 샘플 형태는 id를 유지하고 decision만 초기화한다 (샘플도 같은 정규화 경로)", () => {
+  const out = normalizeSpark({
+    candidates: [
+      { id: "F11", text: "밭길에서 놀았다", source: "memo", grade: "B" },
+      { id: "F12", text: "들이가 신유를 졸졸 따라다녔다", source: "memo", grade: "B" }
+    ],
+    unknowns: [{ id: "U1", text: "강아지의 견종은 무엇인가?" }]
+  });
+  assert.deepEqual(out.candidates.map((c) => c.id), ["F11", "F12"]);
+  assert.deepEqual(out.unknowns, [{ id: "U1", text: "강아지의 견종은 무엇인가?" }]);
+  assert.ok(out.candidates.every((c) => c.decision === "undecided"));
+  assert.equal(out.debug.length, 0);
+});
+
+// ---------------------------------------------------------------------
+console.log("결정과 파생");
+// ---------------------------------------------------------------------
+
+test("setDecision은 입력 record를 수정하지 않고 새 상태를 반환한다", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const next = setDecision(rec, "F1", "confirmed");
+  assert.notEqual(next, rec);
+  assert.notEqual(next.candidates, rec.candidates);
+  assert.equal(rec.candidates[0].decision, "undecided"); // 원본 무오염
+  assert.equal(next.candidates[0].decision, "confirmed");
+});
+
+test("candidates를 고쳐도 이미 파생한 confirmedFacts 결과가 오염되지 않는다", () => {
+  const rec = setDecision(recordFromRaw("메모", SPARK_TWO), "F1", "confirmed");
+  const facts = confirmedFacts(rec); // [F1]
+  assert.equal(facts.length, 1);
+
+  // 이후 상태가 바뀌어도 이미 받은 파생 결과(스냅샷)는 그대로다
+  const after = setDecision(rec, "F1", "rejected");
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].decision, "confirmed");
+  assert.equal(confirmedFacts(after).length, 0);
+
+  // 파생 결과는 후보 객체를 공유하지 않는다 — 사본을 고쳐도 원본이 무오염
+  assert.notEqual(facts[0], rec.candidates[0]);
+  facts[0].decision = "rejected";
+  facts[0].text = "조작됨";
+  assert.equal(rec.candidates[0].decision, "confirmed");
+  assert.equal(rec.candidates[0].text, "아이가 풀밭 길 위에 서 있다");
+});
+
+test("거절한 후보는 confirmedFacts에 절대 없다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "rejected");
+  rec = setDecision(rec, "F2", "confirmed");
+  const facts = confirmedFacts(rec);
+  assert.deepEqual(facts.map((f) => f.id), ["F2"]);
+  assert.ok(facts.every((f) => f.decision === "confirmed"));
+});
+
+test("setDecision은 계약 밖 decision과 없는 후보 id를 거부한다", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  assert.throws(() => setDecision(rec, "F1", "maybe"), TypeError);
+  assert.throws(() => setDecision(rec, "F999", "confirmed"), Error);
+});
+
+// ---------------------------------------------------------------------
+console.log("Gate 1 완료 조건");
+// ---------------------------------------------------------------------
+
+test("undecided가 하나라도 있으면 gate1Complete는 false다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  assert.equal(gate1Complete(rec), false); // 전부 undecided
+  rec = setDecision(rec, "F1", "confirmed");
+  assert.equal(gate1Complete(rec), false); // F2가 아직 undecided
+  rec = setDecision(rec, "F2", "rejected");
+  assert.equal(gate1Complete(rec), true); // 후보 1개 이상 + undecided 0
+});
+
+test("거절도 결정이다 — 전부 거절하면 gate1Complete는 true다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "rejected");
+  rec = setDecision(rec, "F2", "rejected");
+  assert.equal(gate1Complete(rec), true);
+});
+
+test("후보가 0개면 undecided가 없어도 gate1Complete는 false다 (unknowns는 카운트에 넣지 않는다)", () => {
+  assert.equal(gate1Complete(createDayRecord()), false);
+
+  const base = Object.assign(createDayRecord(), { memoText: "메모" });
+  const token = beginExtraction(base);
+  const out = applyExtraction(base, token, { candidates: [], unknowns: ["질문 하나"] });
+  assert.equal(out.candidates.length, 0);
+  assert.equal(out.unknowns.length, 1);
+  assert.equal(gate1Complete(out), false);
+});
+
+// ---------------------------------------------------------------------
+console.log("무효화");
+// ---------------------------------------------------------------------
+
+test("invalidateExtraction 후 후보·결정·unknowns가 전부 비워진다", () => {
+  let rec = recordFromRaw("들이랑 밭길에서 놀았다", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed");
+
+  const invalidated = invalidateExtraction(rec);
+  assert.deepEqual(invalidated.candidates, []);
+  assert.deepEqual(invalidated.unknowns, []);
+  assert.equal(gate1Complete(invalidated), false);
+  assert.equal(invalidated.memoText, "들이랑 밭길에서 놀았다"); // 입력 자체는 유지
+
+  // 원본도 무오염 (불변)
+  assert.equal(rec.candidates.length, 2);
+  assert.equal(rec.candidates[0].decision, "confirmed");
+});
+
+// ---------------------------------------------------------------------
+console.log("저장/복원");
+// ---------------------------------------------------------------------
+
+test("serialize → restore 왕복이 동등하다", () => {
+  let rec = recordFromRaw("들이랑 밭길에서 놀았다", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed");
+  rec = setDecision(rec, "F2", "rejected");
+
+  const json = serialize(rec);
+  assert.equal(typeof json, "string");
+  const back = restore(json);
+  assert.deepEqual(back, rec);
+  assert.equal(gate1Complete(back), gate1Complete(rec));
+});
+
+test("저장 결과에는 계약의 5개 필드만 있고 사진/base64는 닿지 않는다", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const dirty = Object.assign({}, rec, { photoDataUrl: "data:image/jpeg;base64,AAAA" });
+
+  const stored = JSON.parse(serialize(dirty));
+  assert.deepEqual(Object.keys(stored).sort(), [
+    "candidates",
+    "gate1Complete",
+    "memoText",
+    "mode",
+    "unknowns"
+  ]);
+  assert.equal(stored.photoDataUrl, undefined);
+  assert.equal(JSON.stringify(stored).indexOf("base64"), -1);
+});
+
+test("깨진 JSON과 계약에서 벗어난 형태는 restore가 null을 반환한다", () => {
+  assert.equal(restore("{깨진 json"), null);
+  assert.equal(restore(""), null);
+  assert.equal(restore(null), null);
+  assert.equal(restore(42), null);
+  assert.equal(restore("42"), null); // JSON이지만 객체가 아니다
+
+  const brokenSources = [
+    // 후보 source가 계약 밖
+    {
+      mode: "live",
+      memoText: "메모",
+      candidates: [{ id: "F1", text: "x", source: "video", grade: "C", decision: "undecided" }],
+      unknowns: []
+    },
+    // decision이 계약 밖
+    {
+      mode: "live",
+      memoText: "메모",
+      candidates: [{ id: "F1", text: "x", source: "memo", grade: "C", decision: "maybe" }],
+      unknowns: []
+    },
+    // memoText 누락
+    { mode: "live", candidates: [], unknowns: [] },
+    // unknown이 저장 형식(객체)이 아니다
+    { mode: "live", memoText: "메모", candidates: [], unknowns: ["문자열 unknown"] }
+  ];
+  for (const data of brokenSources) {
+    assert.equal(restore(JSON.stringify(data)), null);
+  }
+});
+
+test("restore는 저장된 gate1Complete를 믿지 않고 후보에서 다시 계산한다", () => {
+  const rec = restore(
+    JSON.stringify({
+      mode: "live",
+      memoText: "메모",
+      candidates: [{ id: "F1", text: "x", source: "memo", grade: "C", decision: "undecided" }],
+      unknowns: [],
+      gate1Complete: true // 조작된 저장값
+    })
+  );
+  assert.equal(rec.gate1Complete, false);
+});
+
+// ---------------------------------------------------------------------
+console.log("추출 토큰 가드");
+// ---------------------------------------------------------------------
+
+test("낡은 토큰으로 applyExtraction 하면 무시된다", () => {
+  const base = createDayRecord();
+  const stale = beginExtraction(base);
+  const fresh = beginExtraction(base);
+
+  const ignored = applyExtraction(base, stale, SPARK_TWO);
+  assert.equal(ignored, base); // 아무 일도 없었다 — 원본 그대로
+  assert.equal(base.candidates.length, 0);
+
+  const applied = applyExtraction(base, fresh, {
+    candidates: [{ text: "새 응답", source: "memo", grade: "C" }],
+    unknowns: ["새 질문?"]
+  });
+  assert.deepEqual(applied.candidates.map((c) => c.text), ["새 응답"]);
+  assert.deepEqual(applied.unknowns, [{ id: "U1", text: "새 질문?" }]);
+  assert.ok(applied.candidates.every((c) => c.decision === "undecided")); // 새 추출은 undecided에서 시작
+});
+
+test("메모 수정으로 레코드가 교체된 뒤 도착한 응답은 무시된다 (무효화 규칙)", () => {
+  const base = Object.assign(createDayRecord(), { memoText: "옛 메모" });
+  const token = beginExtraction(base);
+
+  // 사용자가 메모를 고쳤다 — 새 텍스트를 넣고 기존 추출 결과를 무효화한다
+  const edited = invalidateExtraction(Object.assign({}, base, { memoText: "새 메모" }));
+
+  const out = applyExtraction(edited, token, SPARK_TWO);
+  assert.equal(out, edited); // 이전 응답은 이 레코드에 닿지 않는다
+  assert.equal(out.candidates.length, 0);
+  assert.equal(out.memoText, "새 메모");
+});
+
+test("구조가 깨진 raw(candidates가 배열 아님)로는 상태를 덮지 않는다", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const token = beginExtraction(rec);
+  assert.equal(applyExtraction(rec, token, null), rec);
+  assert.equal(applyExtraction(rec, token, { candidates: null }), rec);
+  assert.equal(applyExtraction(rec, token, "문자열 raw"), rec);
+});
+
+test("STORAGE_KEY는 브리프의 taw-day-v1이다", () => {
+  assert.equal(STORAGE_KEY, "taw-day-v1");
+});
+
+// ---------------------------------------------------------------------
+console.log("");
+console.log(passed + " passed, " + failures.length + " failed");
+if (failures.length > 0) {
+  process.exit(1);
+}
