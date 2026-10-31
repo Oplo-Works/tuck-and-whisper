@@ -701,6 +701,8 @@
       list.appendChild(li);
     }
     $("confirmed-empty").hidden = facts.length !== 0;
+    // 프리뷰 진입 버튼도 같은 조건으로 잠근다: Gate 1 미완료 또는 확정 0이면 진입 불가.
+    $("open-preview-btn").disabled = !T.gate1Complete(record) || facts.length === 0;
   }
 
   // ---------------------------------------------------------------
@@ -709,6 +711,8 @@
   // ---------------------------------------------------------------
 
   function enterPreview() {
+    // 진입 조건 (S4 B1): Gate 1이 완료되지 않았거나 확정 사실이 0개면 조용히 반환한다.
+    if (!T.gate1Complete(record) || T.synthesisFacts(record).length === 0) return;
     previewError = "";
     const confirmed = T.synthesisFacts(record);
     premiseSelection = record.questionCard ? record.questionCard.premiseFactIds.slice() : [];
