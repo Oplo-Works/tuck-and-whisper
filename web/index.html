@@ -21,6 +21,10 @@
   .card h2{margin:0 0 4px;font-size:16px}
   .hint{color:var(--dim);font-size:13px;margin:4px 0}
   .notice{color:var(--accent);font-size:13px;background:rgba(242,192,99,.08);border:1px solid rgba(242,192,99,.4);border-radius:10px;padding:8px 12px;margin:8px 0}
+  .error{color:var(--danger);font-size:13px;background:rgba(224,138,138,.08);border:1px solid rgba(224,138,138,.5);border-radius:10px;padding:8px 12px;margin:8px 0}
+  details.debug{margin:8px 0;color:var(--dim);font-size:12px}
+  details.debug summary{cursor:pointer}
+  details.debug pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;max-height:220px;overflow:auto;color:var(--dim);font-size:11px;margin:6px 0 0}
   label{display:block;font-size:13px;color:var(--dim);margin:12px 0 4px}
   input[type=file]{width:100%;font-size:14px}
   textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:10px;font-size:15px;font-family:inherit;resize:vertical}
@@ -29,7 +33,7 @@
   button.primary{background:var(--accent);border-color:var(--accent);color:#14161d;font-weight:600}
   .memo-readonly{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap}
   .photo-placeholder{border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--dim);font-size:13px;margin:8px 0}
-  .photo-thumb{max-width:100%;border-radius:10px;display:block;margin:8px 0}
+  .photo-thumb{max-width:100%;max-height:220px;border-radius:10px;display:block;margin:8px 0}
   .candidate-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
   .candidate-card.grade-b{border-left:4px solid var(--accent)}
   .candidate-text{margin:0;font-size:15px}
@@ -68,6 +72,11 @@
       </div>
       <p class="hint">사진과 메모가 모두 있어야 추출할 수 있다.</p>
       <div id="capture-notice" class="notice" hidden></div>
+      <div id="capture-error" class="error" hidden></div>
+      <details id="debug-details" class="debug" hidden>
+        <summary>디버그 (개발자용)</summary>
+        <pre id="debug-raw"></pre>
+      </details>
       <div>
         <button id="back-to-gate1-btn" hidden>← Gate 1 (검토 계속)</button>
         <button id="new-day-capture-btn">새 하루</button>
@@ -89,6 +98,10 @@
         <button id="edit-memo-btn">메모 수정</button>
         <button id="new-day-gate1-btn">새 하루</button>
       </div>
+      <details id="gate1-debug" class="debug" hidden>
+        <summary>디버그: 형식 깨진 항목 (개발자용)</summary>
+        <pre id="gate1-debug-body"></pre>
+      </details>
     </div>
     <div id="candidate-list"></div>
     <div id="gate1-empty" class="notice" hidden>후보가 없다 — 추출 결과가 없거나 메모 변경으로 무효화되었다.</div>
