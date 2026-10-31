@@ -38,18 +38,31 @@
     return false;
   }
 
+  // 전부 문자열인 배열인지 (S4 확장 필드 검증용 — 빈 문자열도 계약상 문자열이다).
+  function isStringArray(value) {
+    return Array.isArray(value) && value.every(function (v) {
+      return typeof v === "string";
+    });
+  }
+
   // -------------------------------------------------------------------
   // 1. DayRecord 생성
   // -------------------------------------------------------------------
 
-  // 빈 DayRecord — 데이터 계약 그대로 5개 필드만 있다.
+  // 빈 DayRecord — 데이터 계약 그대로다. S4 확장: 브리핑·질문 카드·페이지 문장·증언.
+  // briefing/questionCard/pageSentences는 사실이 바뀌면 초기값으로 되돌아간다(연쇄 무효화),
+  // testimony는 아이 대답 기록이라 사실 정정과 무관하게 유지된다.
   function createDayRecord() {
     return {
       mode: "live", // 빈 레코드는 Capture 화면의 라이브 하루에서 시작한다.
       memoText: "",
       candidates: [],
       unknowns: [],
-      gate1Complete: false
+      gate1Complete: false,
+      briefing: null, // null 또는 [{text, factIds[]}]
+      questionCard: null, // null 또는 {text, unknownId, premiseFactIds[]}
+      pageSentences: [], // [{text, factIds[]}] — 채우는 것은 S5
+      testimony: [] // [{text, at}] — 입력 UI는 S5
     };
   }
 
@@ -220,6 +233,44 @@
       });
   }
 
+  // 합성 경계 (S4): 합성 payload는 이 반환값으로만 만든다 —
+  // 화면 층이 record.candidates를 직접 읽어 합성 입력을 만드는 것은 금지다.
+  function synthesisFacts(record) {
+    return confirmedFacts(record);
+  }
+
+  // 합성 결과 검사: 모든 문장이 factIds를 1개 이상 인용하고, 인용이 전부
+  // 확정 집합 안에 있어야 한다. confirmedIds는 문자열 배열(또는 Set)이다.
+  function validateComposition(sentences, confirmedIds) {
+    const allowed = new Set(confirmedIds);
+    const violations = [];
+    if (!Array.isArray(sentences)) {
+      violations.push({ index: -1, text: "", reason: "문장 배열이 아니다" });
+      return { ok: false, violations: violations };
+    }
+    sentences.forEach(function (sentence, index) {
+      if (!sentence || typeof sentence !== "object" || !isFilledString(sentence.text)) {
+        violations.push({ index: index, text: "", reason: "형식이 깨진 문장이다" });
+        return;
+      }
+      if (!Array.isArray(sentence.factIds) || sentence.factIds.length === 0) {
+        violations.push({ index: index, text: sentence.text, reason: "인용한 factIds가 없다" });
+        return;
+      }
+      const notAllowed = sentence.factIds.filter(function (id) {
+        return !allowed.has(id);
+      });
+      if (notAllowed.length > 0) {
+        violations.push({
+          index: index,
+          text: sentence.text,
+          reason: "확정되지 않은 사실을 인용했다: " + notAllowed.join(", ")
+        });
+      }
+    });
+    return { ok: violations.length === 0, violations: violations };
+  }
+
   // -------------------------------------------------------------------
   // 4. 상태 전이 — 전부 불변: 입력 record를 수정하지 않고 새 record를 반환한다.
   // -------------------------------------------------------------------
@@ -250,17 +301,35 @@
         "후보 id가 정확히 하나가 아니다: " + candidateId + " (" + matchCount + "개)"
       );
     }
-    return withDerivedState(Object.assign({}, record, { candidates: candidates }));
+    // 연쇄 무효화 (Argon 규정): 결정이 바뀌면 합성물(briefing/questionCard/pageSentences)은
+    // 전부 초기값으로 되돌린다. testimony는 사실 정정과 무관하고 사실로 승격되는
+    // 경로가 없어 유지한다.
+    return withDerivedState(
+      Object.assign({}, record, {
+        candidates: candidates,
+        briefing: null,
+        questionCard: null,
+        pageSentences: []
+      })
+    );
   }
 
   // 무효화 규칙: 사진/메모가 바뀌었으면 후보·결정·unknowns를 전부 비운다.
+  // 연쇄 무효화: 합성물(briefing/questionCard/pageSentences)도 초기값으로 되돌린다.
+  // testimony는 유지한다 (아이 대답 기록 — 사실 정정과 무관).
   // mode와 memoText는 그대로 둔다 (새 메모 텍스트를 넣는 것은 화면 층의 몫).
   function invalidateExtraction(record) {
     if (!record || typeof record !== "object") {
       throw new TypeError("record가 객체가 아니다");
     }
     return withDerivedState(
-      Object.assign({}, record, { candidates: [], unknowns: [] })
+      Object.assign({}, record, {
+        candidates: [],
+        unknowns: [],
+        briefing: null,
+        questionCard: null,
+        pageSentences: []
+      })
     );
   }
 
@@ -301,16 +370,75 @@
     // ID 중복은 깨진 저장 데이터다 — 복원하지 않는다.
     if (hasDuplicateId(candidates) || hasDuplicateId(unknowns)) return null;
 
+    // S4 확장 필드 — 없으면(옛 5필드 저장본) 기본값으로 채워 복원한다(하위호환).
+    // 있으면 형식을 검증한다: text는 비어 있지 않은 문자열, factIds/premiseFactIds는
+    // 문자열 배열, unknownId는 문자열, at은 숫자. 하나라도 벗어나면 전체 null.
+    let briefing = null;
+    if (data.briefing !== undefined && data.briefing !== null) {
+      if (!Array.isArray(data.briefing)) return null;
+      briefing = [];
+      for (const line of data.briefing) {
+        if (!line || typeof line !== "object" || !isFilledString(line.text) || !isStringArray(line.factIds)) {
+          return null;
+        }
+        briefing.push({ text: line.text, factIds: line.factIds });
+      }
+    }
+
+    let questionCard = null;
+    if (data.questionCard !== undefined && data.questionCard !== null) {
+      if (!data.questionCard || typeof data.questionCard !== "object") return null;
+      if (typeof data.questionCard.text !== "string" || typeof data.questionCard.unknownId !== "string" ||
+          !isStringArray(data.questionCard.premiseFactIds)) {
+        return null;
+      }
+      if (!isFilledString(data.questionCard.text)) return null;
+      questionCard = {
+        text: data.questionCard.text,
+        unknownId: data.questionCard.unknownId,
+        premiseFactIds: data.questionCard.premiseFactIds
+      };
+    }
+
+    let pageSentences = [];
+    if (data.pageSentences !== undefined && data.pageSentences !== null) {
+      if (!Array.isArray(data.pageSentences)) return null;
+      pageSentences = [];
+      for (const sentence of data.pageSentences) {
+        if (!sentence || typeof sentence !== "object" || !isFilledString(sentence.text) || !isStringArray(sentence.factIds)) {
+          return null;
+        }
+        pageSentences.push({ text: sentence.text, factIds: sentence.factIds });
+      }
+    }
+
+    let testimony = [];
+    if (data.testimony !== undefined && data.testimony !== null) {
+      if (!Array.isArray(data.testimony)) return null;
+      testimony = [];
+      for (const entry of data.testimony) {
+        if (!entry || typeof entry !== "object" || !isFilledString(entry.text) || typeof entry.at !== "number") {
+          return null;
+        }
+        testimony.push({ text: entry.text, at: entry.at });
+      }
+    }
+
     return withDerivedState({
       mode: data.mode,
       memoText: data.memoText,
       candidates: candidates,
-      unknowns: unknowns
+      unknowns: unknowns,
+      briefing: briefing,
+      questionCard: questionCard,
+      pageSentences: pageSentences,
+      testimony: testimony
     });
   }
 
   // JSON 문자열로 직렬화. 레코드가 계약에 맞지 않으면 null (저장하지 않는다).
   // 화이트리스트만 남기므로 레코드에 잘못 붙은 사진/base64 등은 저장에 닿지 않는다.
+  // S4: 확장 4필드(briefing/questionCard/pageSentences/testimony) 포함 — 총 9필드.
   function serialize(record) {
     const clean = parseStored(record);
     if (!clean) return null;
@@ -319,7 +447,11 @@
       memoText: clean.memoText,
       candidates: clean.candidates,
       unknowns: clean.unknowns,
-      gate1Complete: clean.gate1Complete
+      gate1Complete: clean.gate1Complete,
+      briefing: clean.briefing,
+      questionCard: clean.questionCard,
+      pageSentences: clean.pageSentences,
+      testimony: clean.testimony
     });
   }
 
@@ -386,6 +518,8 @@
     normalizeSpark: normalizeSpark,
     setDecision: setDecision,
     confirmedFacts: confirmedFacts,
+    synthesisFacts: synthesisFacts,
+    validateComposition: validateComposition,
     gate1Complete: gate1Complete,
     invalidateExtraction: invalidateExtraction,
     serialize: serialize,

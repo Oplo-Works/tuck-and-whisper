@@ -9,6 +9,8 @@ const {
   normalizeSpark,
   setDecision,
   confirmedFacts,
+  synthesisFacts,
+  validateComposition,
   gate1Complete,
   invalidateExtraction,
   serialize,
@@ -51,13 +53,17 @@ const SPARK_TWO = {
 console.log("normalize");
 // ---------------------------------------------------------------------
 
-test("createDayRecord는 계약 그대로의 빈 DayRecord를 반환한다", () => {
+test("createDayRecord는 계약 그대로의 빈 DayRecord를 반환한다 (S4 확장 필드 포함)", () => {
   assert.deepEqual(createDayRecord(), {
     mode: "live",
     memoText: "",
     candidates: [],
     unknowns: [],
-    gate1Complete: false
+    gate1Complete: false,
+    briefing: null,
+    questionCard: null,
+    pageSentences: [],
+    testimony: []
   });
 });
 
@@ -333,16 +339,20 @@ test("serialize → restore 왕복이 동등하다", () => {
   assert.equal(gate1Complete(back), gate1Complete(rec));
 });
 
-test("저장 결과에는 계약의 5개 필드만 있고 사진/base64는 닿지 않는다", () => {
+test("저장 결과에는 계약의 9개 필드만 있고 사진/base64는 닿지 않는다 (S4 확장)", () => {
   const rec = recordFromRaw("메모", SPARK_TWO);
   const dirty = Object.assign({}, rec, { photoDataUrl: "data:image/jpeg;base64,AAAA" });
 
   const stored = JSON.parse(serialize(dirty));
   assert.deepEqual(Object.keys(stored).sort(), [
+    "briefing",
     "candidates",
     "gate1Complete",
     "memoText",
     "mode",
+    "pageSentences",
+    "questionCard",
+    "testimony",
     "unknowns"
   ]);
   assert.equal(stored.photoDataUrl, undefined);
@@ -423,6 +433,132 @@ test("restore는 후보/unknown ID가 중복된 저장 데이터를 거부한다
     ),
     null
   );
+});
+
+// ---------------------------------------------------------------------
+console.log("S4 코어 확장");
+// ---------------------------------------------------------------------
+
+test("확장 필드(briefing/questionCard/pageSentences/testimony) 왕복이 동등하다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed");
+  rec = Object.assign({}, rec, {
+    briefing: [{ text: "오늘은 공원에 갔다.", factIds: ["F1"] }],
+    questionCard: { text: "강아지는 무슨 색이었을까?", unknownId: "U1", premiseFactIds: ["F1"] },
+    pageSentences: [{ text: "공원에 갔다.", factIds: ["F1"] }],
+    testimony: [{ text: "재밌었어!", at: 1730000000000 }]
+  });
+  const back = restore(serialize(rec));
+  assert.deepEqual(back, rec);
+});
+
+test("옛 5필드 저장본은 확장 필드 기본값으로 채워 복원된다 (하위호환)", () => {
+  const legacy = JSON.stringify({
+    mode: "sample",
+    memoText: "옛 메모",
+    candidates: [{ id: "F1", text: "x", source: "memo", grade: "C", decision: "confirmed" }],
+    unknowns: [{ id: "U1", text: "q?" }],
+    gate1Complete: false // 저장된 값과 무관하게 복원 시 후보에서 재계산된다
+  });
+  assert.deepEqual(restore(legacy), {
+    mode: "sample",
+    memoText: "옛 메모",
+    candidates: [{ id: "F1", text: "x", source: "memo", grade: "C", decision: "confirmed" }],
+    unknowns: [{ id: "U1", text: "q?" }],
+    gate1Complete: true, // confirmed 1 + undecided 0 → 재계산 결과 true
+    briefing: null,
+    questionCard: null,
+    pageSentences: [],
+    testimony: []
+  });
+});
+
+test("깨진 확장 필드가 하나라도 있으면 restore는 null을 반환한다", () => {
+  const base = { mode: "live", memoText: "메모", candidates: [], unknowns: [] };
+  const broken = [
+    { briefing: [{ text: "", factIds: ["F1"] }] }, // 빈 text
+    { briefing: [{ text: "x", factIds: "F1" }] }, // factIds가 배열 아님
+    { briefing: "배열이 아닌 통째 문자열" }, // briefing이 배열 아님
+    { questionCard: { text: "q", unknownId: 7, premiseFactIds: [] } }, // unknownId 문자열 아님
+    { questionCard: { text: "q", unknownId: "U1" } }, // premiseFactIds 누락
+    { questionCard: { text: "", unknownId: "U1", premiseFactIds: [] } }, // 빈 text
+    { pageSentences: [{ text: "s", factIds: [1] }] }, // 숫자 id
+    { testimony: [{ text: "t", at: "어제" }] }, // at 숫자 아님
+    { testimony: [{ text: "t" }] } // at 누락
+  ];
+  for (const extra of broken) {
+    assert.equal(restore(JSON.stringify(Object.assign({}, base, extra))), null);
+  }
+});
+
+test("setDecision은 합성물을 초기화하고 testimony는 유지한다 (연쇄 무효화)", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed");
+  rec = Object.assign({}, rec, {
+    briefing: [{ text: "줄", factIds: ["F1"] }],
+    questionCard: { text: "q", unknownId: "U1", premiseFactIds: ["F1"] },
+    pageSentences: [{ text: "s", factIds: ["F1"] }],
+    testimony: [{ text: "아이 말", at: 123 }]
+  });
+  const next = setDecision(rec, "F2", "confirmed");
+  assert.equal(next.briefing, null);
+  assert.equal(next.questionCard, null);
+  assert.deepEqual(next.pageSentences, []);
+  assert.deepEqual(next.testimony, [{ text: "아이 말", at: 123 }]); // 유지
+});
+
+test("invalidateExtraction도 합성물을 초기화하고 testimony는 유지한다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed");
+  rec = Object.assign({}, rec, {
+    briefing: [{ text: "줄", factIds: ["F1"] }],
+    questionCard: { text: "q", unknownId: "U1", premiseFactIds: ["F1"] },
+    pageSentences: [{ text: "s", factIds: ["F1"] }],
+    testimony: [{ text: "아이 말", at: 123 }]
+  });
+  const next = invalidateExtraction(rec);
+  assert.equal(next.briefing, null);
+  assert.equal(next.questionCard, null);
+  assert.deepEqual(next.pageSentences, []);
+  assert.deepEqual(next.testimony, [{ text: "아이 말", at: 123 }]); // 유지
+  assert.deepEqual(next.candidates, []);
+});
+
+test("validateComposition: 전부 확정 사실을 1개 이상 인용하면 ok다", () => {
+  const result = validateComposition(
+    [
+      { text: "a", factIds: ["F1"] },
+      { text: "b", factIds: ["F1", "F2"] }
+    ],
+    ["F1", "F2"]
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.violations, []);
+});
+
+test("validateComposition: 인용 없음·미확인 인용·깨진 형식을 위반으로 잡는다", () => {
+  const result = validateComposition(
+    [
+      { text: "인용 없는 문장", factIds: [] },
+      { text: "거절된 사실 인용", factIds: ["F9"] },
+      { text: "정상 문장", factIds: ["F1"] },
+      null
+    ],
+    ["F1"]
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.violations.length, 3);
+  assert.deepEqual(result.violations.map((v) => v.index), [0, 1, 3]);
+  assert.ok(result.violations[1].reason.includes("F9"));
+});
+
+test("synthesisFacts는 confirmedFacts와 같고 거절·미결정을 제외한다", () => {
+  let rec = recordFromRaw("메모", SPARK_TWO);
+  rec = setDecision(rec, "F1", "confirmed"); // F2는 미결정
+  assert.deepEqual(synthesisFacts(rec).map((f) => f.id), ["F1"]);
+  rec = setDecision(rec, "F2", "rejected"); // 거절도 제외
+  assert.deepEqual(synthesisFacts(rec).map((f) => f.id), ["F1"]);
+  assert.deepEqual(synthesisFacts(rec), confirmedFacts(rec)); // 명시적 별칭
 });
 
 // ---------------------------------------------------------------------
