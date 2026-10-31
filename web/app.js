@@ -23,6 +23,12 @@
 - 아이와 동물의 상호작용 — 시선 교환, 올려다봄/내려다봄, 신체 접촉, 몸의 방향 — 도 관찰 후보로 빠짐없이 포함한다.
 - 출력은 JSON만: {"candidates":[{"text":"...","source":"photo|memo","grade":"B|C"}],"unknowns":["..."]}`;
 
+  // 브리핑 합성 시스템 프롬프트 (S4 패킷 동결 — 그대로 쓸 것).
+  const BRIEFING_SYSTEM_PROMPT = "너는 부모를 위한 취침 전 브리핑 작성자다. 입력은 부모가 확정한 사실 목록뿐이다(id와 text). 규칙: 1) 입력에 없는 사실·감정·원인·인물을 만들지 마라. 2) 모든 문장은 근거가 된 사실의 id를 factIds에 인용해라. 인용 없는 문장은 금지. 3) 문장은 짧고 담백하게 — 사실을 전하는 것만 해라. 4) 출력은 JSON만: {\"lines\":[{\"text\":\"...\",\"factIds\":[\"F1\"]}]}";
+
+  // 질문 카드 초안 시스템 프롬프트 (패킷에 동결문이 없어 브리핑 프롬프트와 같은 원칙으로 작성 — 가정 목록 참조).
+  const QUESTION_SYSTEM_PROMPT = "너는 부모가 아이에게 물어볼 취침 질문 카드 작성자다. 입력은 아직 알 수 없는 질문(unknown) 하나와 그 전제가 되는 확정 사실 목록(id와 text)이다. 규칙: 1) 입력에 없는 사실·감정·인물을 만들지 마라. 2) unknown을 아이에게 물기 좋은 짧은 한 문장으로 다듬어라. 3) 확정 사실을 다시 설명하지 마라. 4) 출력은 JSON만: {\"text\":\"...\"}";
+
   // 브리프의 스파이크 실제 출력 그대로 — 등급을 임의로 고치지 않는다 (F11~F13의 B 포함).
   const SAMPLE_DAY = {
     child: { name: "신유", age: 7 },
@@ -61,11 +67,18 @@
   let lastDebugText = "";           // 형식 깨진 항목(debug) — 세션 전용, 텍스트로만 표시한다
   let voiceFile = null;             // 세션 전용 녹음 File (m4a 그대로) — 저장 안 됨
   let transcribing = false;         // 음성 전사 진행 중 — extracting과 독립 (S2 경로와 격리)
+  let synthesizing = false;         // 브리핑 합성 진행 중 (S4)
+  let questionDrafting = false;     // 질문 초안 작성 진행 중 (S4)
+  let previewError = "";            // 프리뷰 화면 오류 — 세션 전용
+  let briefingFallbackNotice = false; // 폴백 안내 표시 여부 — 세션 전용 (저장 안 함)
+  let premiseSelection = [];        // 질문 카드 전제 사실 선택 — 세션 전용
+  let selectedUnknownId = "";       // 질문 카드 unknown 선택 — 세션 전용 (기본값: 마지막 unknown)
+  let previewRawSnippet = "";       // 합성 실패 시 모델 원문 스니펫 — 세션 전용 디버그
 
   function $(id) { return document.getElementById(id); }
 
   // --- 화면 전환 (단일 헬퍼) ---
-  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed"];
+  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed", "screen-preview"];
   function showScreen(id) {
     for (const sid of SCREENS) {
       $(sid).hidden = sid !== id;
@@ -202,6 +215,27 @@
       t = t.replace(/^```[a-zA-Z]*\r?\n?/, "").replace(/```\s*$/, "").trim();
     }
     return t;
+  }
+
+  // 모델 응답용 완화 파싱: 직접 파싱이 실패하면 본문에서 첫 { 부터 마지막 } 까지
+  // 잘라 다시 시도한다 (앞뒤 잡텍스트만 문제일 때 복구한다). 그래도 실패하면 원문 스니펫을
+  // 에러에 붙여 디버그 영역으로 보낸다.
+  function parseModelJson(text, what) {
+    const stripped = stripCodeFence(text);
+    try {
+      return JSON.parse(stripped);
+    } catch (firstErr) {
+      const start = stripped.indexOf("{");
+      const end = stripped.lastIndexOf("}");
+      if (start !== -1 && end > start) {
+        try {
+          return JSON.parse(stripped.slice(start, end + 1));
+        } catch (secondErr) { /* 아래에서 원문과 함께 실패 처리 */ }
+      }
+      const err = new Error(what + "를 JSON으로 읽을 수 없다");
+      err.rawSnippet = stripped.slice(0, 400);
+      throw err;
+    }
   }
 
   // choices[0].message.content → 펜스 제거 → JSON.parse → 구조 검증 (candidates 배열).
@@ -652,6 +686,349 @@
   }
 
   // ---------------------------------------------------------------
+  // 프리뷰 화면 (S4) — 브리핑 합성 + 질문 카드
+  // 합성 입력은 TawCore.synthesisFacts(record)로만 만든다 (candidates 직접 읽기 금지).
+  // ---------------------------------------------------------------
+
+  function enterPreview() {
+    previewError = "";
+    const confirmed = T.synthesisFacts(record);
+    premiseSelection = record.questionCard ? record.questionCard.premiseFactIds.slice() : [];
+    selectedUnknownId = record.questionCard
+      ? record.questionCard.unknownId
+      : (record.unknowns.length > 0 ? record.unknowns[record.unknowns.length - 1].id : "");
+    renderPreviewScreen();
+    showScreen("screen-preview");
+    if (confirmed.length === 0) return; // 전부 거절 — 안내만 보여준다
+
+    // 진입 가드: 저장된 briefing의 factIds가 현재 확정 집합의 부분집합이 아니면
+    // 버리고 재합성 상태로 진입한다 (패킷 B1).
+    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
+    const briefingUsable = record.briefing && record.briefing.length > 0 &&
+      record.briefing.every(function (line) {
+        return Array.isArray(line.factIds) && line.factIds.length > 0 &&
+          line.factIds.every(function (id) { return confirmedIds.has(id); });
+      });
+    if (!briefingUsable) {
+      record = Object.assign({}, record, { briefing: null });
+      briefingFallbackNotice = false;
+      persist();
+      synthesizeBriefingWithRetry();
+    }
+  }
+
+  function renderPreviewScreen() {
+    $("preview-mode").textContent = record.mode === "sample" ? "Sample day" : "라이브 하루";
+    const confirmed = T.synthesisFacts(record);
+    const noFacts = confirmed.length === 0;
+    $("preview-no-facts").hidden = !noFacts;
+    $("preview-main").hidden = noFacts;
+    if (noFacts) return;
+
+    $("preview-synth-status").textContent = synthesizing ? "브리핑을 만들고 있다…" : "";
+    $("preview-error").hidden = previewError === "";
+    $("preview-error").textContent = previewError;
+    $("preview-fallback-notice").hidden = !(briefingFallbackNotice && record.briefing);
+    $("resynthesize-btn").disabled = synthesizing || questionDrafting;
+    $("preview-debug").hidden = previewRawSnippet === "";
+    $("preview-debug-body").textContent = previewRawSnippet; // 모델 원문 — 텍스트로만
+
+    const linesWrap = $("briefing-lines");
+    linesWrap.textContent = "";
+    if (record.briefing && record.briefing.length > 0) {
+      const factTextById = {};
+      for (const f of confirmed) factTextById[f.id] = f.text;
+      for (const line of record.briefing) {
+        linesWrap.appendChild(makeBriefingLine(line, factTextById));
+      }
+      $("briefing-empty-hint").hidden = true;
+    } else {
+      $("briefing-empty-hint").hidden = synthesizing; // 합성 중이면 상태 줄이 대신 보인다
+    }
+
+    renderQuestionCardArea(confirmed);
+  }
+
+  // 브리핑 줄: 문장(textContent) + 인용 factId 칩 — 칩을 누르면 원문 사실을 보여준다.
+  function makeBriefingLine(line, factTextById) {
+    const wrap = document.createElement("div");
+    wrap.className = "briefing-line";
+    const text = document.createElement("p");
+    text.className = "candidate-text";
+    text.textContent = line.text; // 모델 텍스트 — textContent로만
+    wrap.appendChild(text);
+
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    const detail = document.createElement("div");
+    detail.className = "fact-detail";
+    detail.hidden = true;
+    for (const factId of line.factIds) {
+      const chip = makeChip(factId, "chip-fact");
+      chip.addEventListener("click", function () {
+        detail.hidden = !detail.hidden;
+        detail.textContent = "원문 (" + factId + "): " + (factTextById[factId] || "(현재 확정 목록에 없는 사실이다)");
+      });
+      chips.appendChild(chip);
+    }
+    wrap.appendChild(chips);
+    wrap.appendChild(detail);
+    return wrap;
+  }
+
+  // 브리핑 합성 — 추출과 동일한 패턴: 시작 시점 레코드를 기억하고(토큰), 응답 적용 전에 비교한다.
+  // validateComposition 위반 시 1회만 위반 내용을 프롬프트에 넣어 재합성, 재실패 시 폴백.
+  async function synthesizeBriefingWithRetry() {
+    if (synthesizing) return;
+    const confirmed = T.synthesisFacts(record);
+    if (confirmed.length === 0) return;
+    synthesizing = true;
+    previewError = "";
+    renderPreviewScreen();
+    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 추출과 같은 가드
+    try {
+      let correctionNote = null;
+      let lines = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (record !== token.record) return; // 세션이 바뀌었다 — 조용히 중단
+        let parseFailed = false;
+        try {
+          lines = await requestBriefingLines(confirmed, correctionNote);
+        } catch (err) {
+          if (err && err.rawSnippet) {
+            // 모델이 깨진 JSON을 줬다 — 같은 루프에서 1회 교정을 시도한다.
+            parseFailed = true;
+            previewRawSnippet = err.rawSnippet;
+            correctionNote = "이전 답안은 깨진 JSON이었다 (원문 일부: " + err.rawSnippet.slice(0, 160) + "). 설명 없이 JSON만 출력하라.";
+            lines = null;
+          } else {
+            throw err; // 네트워크/HTTP 오류 — 배너로 (재시도는 수동)
+          }
+        }
+        if (!parseFailed) {
+          const check = T.validateComposition(lines, confirmed.map(function (f) { return f.id; }));
+          if (check.ok) break;
+          correctionNote = check.violations.map(function (v) {
+            return "- 문장 " + (v.index + 1) + " (" + v.text + "): " + v.reason;
+          }).join("\n");
+          lines = null;
+        }
+      }
+      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (lines) {
+        applyBriefing(lines, false);
+      } else {
+        // 1회 재합성 후에도 실패 — 폴백: 확정 사실 원문을 그대로 브리핑 줄로
+        applyBriefing(confirmed.map(function (f) {
+          return { text: f.text, factIds: [f.id] };
+        }), true);
+      }
+    } catch (err) {
+      if (record !== token.record) return;
+      previewError = "브리핑 합성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+      previewRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
+    } finally {
+      synthesizing = false;
+      renderPreviewScreen();
+    }
+  }
+
+  async function requestBriefingLines(confirmed, correctionNote) {
+    let userContent = JSON.stringify(confirmed.map(function (f) {
+      return { id: f.id, text: f.text };
+    }));
+    if (correctionNote) {
+      userContent += "\n\n이전 답안은 아래 이유로 기각됐다 — 이번에는 규칙을 지켜라:\n" + correctionNote;
+    }
+    const response = await fetch(WORKER_URL + "/api/spark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "muse-spark-1.3",
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: BRIEFING_SYSTEM_PROMPT },
+          { role: "user", content: userContent }
+        ]
+      })
+    });
+    const rawText = await response.text();
+    if (!response.ok) {
+      throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+    }
+    let payload;
+    try {
+      payload = JSON.parse(rawText);
+    } catch (err) {
+      throw new Error("응답이 JSON이 아니다");
+    }
+    const content = payload && payload.choices && payload.choices[0] &&
+      payload.choices[0].message ? payload.choices[0].message.content : undefined;
+    if (typeof content !== "string") {
+      throw new Error("응답에 choices[0].message.content가 없다");
+    }
+    const raw = parseModelJson(content, "브리핑 답안");
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.lines)) {
+      const err = new Error("응답 구조가 계약과 다르다 (lines가 배열이 아님)");
+      err.rawSnippet = content.slice(0, 400);
+      throw err;
+    }
+    return raw.lines.map(function (line) {
+      return {
+        text: line && typeof line.text === "string" ? line.text : "",
+        factIds: line && Array.isArray(line.factIds)
+          ? line.factIds.filter(function (id) { return typeof id === "string"; })
+          : []
+      };
+    });
+  }
+
+  // core에 합성 적용 함수가 없어(패킷 범위 밖) 화면 층에서 불변 갱신으로 적용한다.
+  // 적용 전 토큰 가드는 synthesizeBriefingWithRetry가 책임진다.
+  function applyBriefing(lines, isFallback) {
+    record = Object.assign({}, record, { briefing: lines });
+    briefingFallbackNotice = isFallback;
+    persist();
+  }
+
+  // ---------------------------------------------------------------
+  // 질문 카드 (S4 B3)
+  // ---------------------------------------------------------------
+
+  function renderQuestionCardArea(confirmed) {
+    const select = $("question-unknown");
+    select.textContent = "";
+    if (record.unknowns.length === 0) {
+      const opt = document.createElement("option");
+      opt.textContent = "unknown이 없다";
+      select.appendChild(opt);
+      select.disabled = true;
+    } else {
+      select.disabled = false;
+      for (const u of record.unknowns) {
+        const opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = u.text; // 모델 텍스트 — textContent로만
+        select.appendChild(opt);
+      }
+      const fallbackId = record.unknowns[record.unknowns.length - 1].id; // 기본값: 마지막 unknown
+      select.value = selectedUnknownId && record.unknowns.some(function (u) { return u.id === selectedUnknownId; })
+        ? selectedUnknownId
+        : fallbackId;
+      selectedUnknownId = select.value;
+    }
+
+    const premiseWrap = $("premise-chips");
+    premiseWrap.textContent = "";
+    for (const f of confirmed) {
+      const chip = makeChip(f.id + " · " + f.text, premiseSelection.indexOf(f.id) !== -1 ? "chip-premise-on" : "");
+      chip.addEventListener("click", function () { togglePremise(f.id); });
+      premiseWrap.appendChild(chip);
+    }
+
+    const card = record.questionCard;
+    $("question-text").value = card ? card.text : "";
+    $("question-text").readOnly = !card; // 초안이 생겨야 수정할 수 있다
+    $("draft-btn").disabled = questionDrafting || record.unknowns.length === 0;
+    $("draft-btn").textContent = questionDrafting ? "초안 작성 중…" : "질문 초안 만들기";
+    $("question-card-meta").textContent = card
+      ? "unknown: " + card.unknownId + " · 전제: " + (card.premiseFactIds.length > 0 ? card.premiseFactIds.join(", ") : "없음") + " — 텍스트는 직접 고칠 수 있다."
+      : "아직 초안이 없다 — unknown과 전제를 고르고 초안을 만들면 수정할 수 있다.";
+  }
+
+  function togglePremise(factId) {
+    const index = premiseSelection.indexOf(factId);
+    if (index === -1) premiseSelection.push(factId);
+    else premiseSelection.splice(index, 1);
+    if (record.questionCard) {
+      // 이미 만든 카드의 전제도 함께 갱신해 기록을 일치시킨다
+      record = Object.assign({}, record, {
+        questionCard: Object.assign({}, record.questionCard, { premiseFactIds: premiseSelection.slice() })
+      });
+      persist();
+    }
+    renderPreviewScreen();
+  }
+
+  function onUnknownChange() {
+    selectedUnknownId = $("question-unknown").value;
+    if (record.questionCard) {
+      record = Object.assign({}, record, {
+        questionCard: Object.assign({}, record.questionCard, { unknownId: selectedUnknownId })
+      });
+      persist();
+    }
+  }
+
+  function onQuestionTextEdit() {
+    if (!record.questionCard) return;
+    record = Object.assign({}, record, {
+      questionCard: Object.assign({}, record.questionCard, { text: $("question-text").value })
+    });
+    persist();
+  }
+
+  async function runQuestionDraft() {
+    if (questionDrafting) return;
+    const unknown = record.unknowns.find(function (u) { return u.id === selectedUnknownId; });
+    if (!unknown) return;
+    const premises = T.synthesisFacts(record).filter(function (f) {
+      return premiseSelection.indexOf(f.id) !== -1;
+    });
+    questionDrafting = true;
+    previewError = "";
+    renderPreviewScreen();
+    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 늦은 응답 가드
+    try {
+      const response = await fetch(WORKER_URL + "/api/spark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "muse-spark-1.3",
+          reasoning_effort: "low",
+          messages: [
+            { role: "system", content: QUESTION_SYSTEM_PROMPT },
+            { role: "user", content: JSON.stringify({
+              unknown: { id: unknown.id, text: unknown.text },
+              premiseFacts: premises.map(function (f) { return { id: f.id, text: f.text }; })
+            }) }
+          ]
+        })
+      });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+      }
+      let payload;
+      try {
+        payload = JSON.parse(rawText);
+      } catch (err) {
+        throw new Error("응답이 JSON이 아니다");
+      }
+      const content = payload && payload.choices && payload.choices[0] &&
+        payload.choices[0].message ? payload.choices[0].message.content : undefined;
+      if (typeof content !== "string") {
+        throw new Error("응답에 choices[0].message.content가 없다");
+      }
+      const raw = JSON.parse(stripCodeFence(content));
+      if (!raw || typeof raw !== "object" || typeof raw.text !== "string" || raw.text.trim() === "") {
+        throw new Error("응답 구조가 계약과 다르다 (text가 없다)");
+      }
+      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      record = Object.assign({}, record, {
+        questionCard: { text: raw.text, unknownId: unknown.id, premiseFactIds: premiseSelection.slice() }
+      });
+      persist();
+    } catch (err) {
+      if (record !== token.record) return;
+      previewError = "질문 초안 작성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+    } finally {
+      questionDrafting = false;
+      renderPreviewScreen();
+    }
+  }
+
+  // ---------------------------------------------------------------
   // 교체 전이: 새 하루 / 샘플 로드 (병합이 아니라 완전 교체다)
   // ---------------------------------------------------------------
 
@@ -664,6 +1041,10 @@
     photoFile = null;
     voiceFile = null;
     lastDebugText = "";
+    previewError = "";
+    briefingFallbackNotice = false;
+    premiseSelection = [];
+    selectedUnknownId = "";
     persist();
     hideCaptureError();
     $("capture-notice").hidden = true;
@@ -687,6 +1068,10 @@
     photoFile = null;
     voiceFile = null;
     lastDebugText = "";
+    previewError = "";
+    briefingFallbackNotice = false;
+    premiseSelection = [];
+    selectedUnknownId = "";
     persist();
     hideCaptureError();
     renderGate1Screen();
@@ -725,7 +1110,20 @@
       renderGate1Screen();
       showScreen("screen-gate1");
     });
+    $("open-preview-btn").addEventListener("click", enterPreview);
     $("new-day-confirmed-btn").addEventListener("click", startNewDay);
+
+    $("resynthesize-btn").addEventListener("click", function () {
+      previewError = "";
+      synthesizeBriefingWithRetry();
+    });
+    $("back-to-confirmed-btn").addEventListener("click", function () {
+      renderConfirmedScreen();
+      showScreen("screen-confirmed");
+    });
+    $("draft-btn").addEventListener("click", runQuestionDraft);
+    $("question-unknown").addEventListener("change", onUnknownChange);
+    $("question-text").addEventListener("input", onQuestionTextEdit);
   }
 
   // ---------------------------------------------------------------
