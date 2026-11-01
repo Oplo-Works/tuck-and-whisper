@@ -52,6 +52,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 const FIXTURE_PATH = path.join(ROOT, "fixtures", "deuri-day.json");
 const APP_PATH = path.join(ROOT, "web", "app.js");
+const I18N_PATH = path.join(ROOT, "web", "i18n.js");
 const INDEX_PATH = path.join(ROOT, "web", "index.html");
 const CORE_TEST_PATH = path.join(ROOT, "tests", "core.test.mjs");
 const WORKER_URL = "https://taw-meta-proxy.minkyuthebuilder.workers.dev";
@@ -898,6 +899,7 @@ const INDEX_IDS = Array.from(indexHtml.matchAll(/\bid="([^"]+)"/g)).map((m) => m
 
 function createStorage(seedRecord) {
   const map = new Map();
+  map.set("taw-lang", "ko");
   if (seedRecord) {
     const json = TawCore.serialize(seedRecord);
     if (json === null) throw new Error("시드 레코드를 직렬화할 수 없다 (계약 위반)");
@@ -1156,6 +1158,7 @@ function createAppSession(options = {}) {
     console
   };
   vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(I18N_PATH, "utf8"), sandbox, { filename: "web/i18n.js" });
   vm.runInContext(fs.readFileSync(APP_PATH, "utf8"), sandbox, { filename: "web/app.js" });
 
   const api = {
