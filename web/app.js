@@ -1443,6 +1443,18 @@
     showScreen("screen-capture");
   }
 
+  // ---------------------------------------------------------------
+  // 새 하루 확인 단계: [시작]을 눌렀을 때만 startNewDay 가 실행된다
+  // ---------------------------------------------------------------
+
+  function openNewDayConfirm() {
+    $("new-day-confirm-overlay").hidden = false;
+  }
+
+  function closeNewDayConfirm() {
+    $("new-day-confirm-overlay").hidden = true;
+  }
+
   function loadSampleDay() {
     const base = Object.assign(T.createDayRecord(), {
       mode: "sample",
@@ -1494,7 +1506,7 @@
       renderGate1Screen();
       showScreen("screen-gate1");
     });
-    $("new-day-capture-btn").addEventListener("click", startNewDay);
+    $("new-day-capture-btn").addEventListener("click", openNewDayConfirm);
 
     $("batch-confirm-btn").addEventListener("click", batchConfirmC);
     $("goto-confirmed-btn").addEventListener("click", function () {
@@ -1505,14 +1517,19 @@
       renderCaptureScreen();
       showScreen("screen-capture");
     });
-    $("new-day-gate1-btn").addEventListener("click", startNewDay);
+    $("new-day-gate1-btn").addEventListener("click", openNewDayConfirm);
 
     $("back-to-gate1-from-confirmed-btn").addEventListener("click", function () {
       renderGate1Screen();
       showScreen("screen-gate1");
     });
     $("open-preview-btn").addEventListener("click", enterPreview);
-    $("new-day-confirmed-btn").addEventListener("click", startNewDay);
+    $("new-day-confirmed-btn").addEventListener("click", openNewDayConfirm);
+    $("new-day-confirm-start-btn").addEventListener("click", function () {
+      closeNewDayConfirm();
+      startNewDay(); // 기존 초기화 동작 그대로 — 확인에서만 닿는다
+    });
+    $("new-day-confirm-cancel-btn").addEventListener("click", closeNewDayConfirm);
 
     $("resynthesize-btn").addEventListener("click", function () {
       previewError = "";
