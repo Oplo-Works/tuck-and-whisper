@@ -21,6 +21,9 @@
     const info = I ? I.languageInfo(I.getLanguage()) : null;
     return info && info.bias ? info.bias : "Korean";
   }
+  function currentLocale() {
+    return I ? I.getLanguage() : "ko"; // 증언 시각 등 표시 로케일 — 선택 언어를 따른다
+  }
 
   // 정적(data-i18n) 일괄 교체 + <html lang/dir> 연동 (ar만 rtl).
   function applyI18nStatic() {
@@ -595,6 +598,7 @@
 
     transcribing = true;
     setVoiceRunning(true);
+    hideCaptureError(); // 재시도 시 이전 실패 배너를 소거한다 (P2-3)
     $("voice-status").textContent = t("capture.transcribingLong");
     try {
       // 1) 변환 — 독립 함수. 디코딩 실패 시 브리프 문구 그대로, 메모 칸은 그대로.
@@ -610,6 +614,7 @@
             ""
           );
         }
+        $("voice-status").textContent = ""; // 실패 — "전사 중…" 고착 해제 (P2-3)
         return;
       }
 
@@ -645,9 +650,11 @@
       //    메모 교체 = 메모 수정 — 기존 무효화 규칙을 그대로 탄다 (후보가 있으면 전부 비워진다).
       $("memo-input").value = transcript;
       onMemoInput();
+      hideCaptureError(); // 성공 — 이전 실패 배너를 소거한다 (P2-3)
       $("voice-status").textContent = t("capture.transcribeDone");
     } catch (err) {
       // 실패 계약 (S2와 동일): 배너 + 입력 유지 + 재시도 가능
+      $("voice-status").textContent = ""; // 실패 — "전사 중…" 고착 해제 (P2-3)
       showCaptureError(
         t("capture.transcribeFailed", { message: err && err.message ? err.message : t("error.unknown") }),
         ""
@@ -669,7 +676,7 @@
     photoArea.textContent = "";
     if (record.mode === "sample") {
       // 샘플에 임의 사진을 붙이지 않는다 — 거짓 출처 연관 방지 (브리프)
-      photoArea.appendChild(makePhotoPlaceholder("Sample day — no photo"));
+      photoArea.appendChild(makePhotoPlaceholder(t("photo.sampleNone")));
     } else if (photoUrl) {
       const img = document.createElement("img");
       img.className = "photo-thumb";
@@ -802,7 +809,7 @@
     const rejectedCount = record.candidates.filter(function (c) {
       return c.decision === "rejected";
     }).length;
-    $("confirmed-count").textContent = "Confirmed " + facts.length + " · Rejected " + rejectedCount;
+    $("confirmed-count").textContent = t("confirmed.count", { confirmed: facts.length, rejected: rejectedCount });
 
     const list = $("confirmed-list");
     list.textContent = "";
@@ -849,7 +856,7 @@
   function renderRestrictedPhotoArea(area) {
     area.textContent = "";
     if (record.mode === "sample") {
-      area.appendChild(makePhotoPlaceholder("Sample day — no photo"));
+      area.appendChild(makePhotoPlaceholder(t("photo.sampleNone")));
       return;
     }
     if (photoUrl) {
@@ -940,6 +947,8 @@
       briefingFallbackNotice = false;
       persist();
       synthesizeBriefingWithRetry();
+    } else {
+      previewRawSnippet = ""; // 재진입 성공 — 낡은 실패 원문을 비운다 (P2-3)
     }
   }
 
@@ -1056,6 +1065,7 @@
       }
       if (invalidationEpoch !== epoch) return; // 늦은 응답 — 조용히 버린다
       if (lines) {
+        previewRawSnippet = ""; // 재합성 성공 — 낡은 실패 원문을 비운다 (P2-3)
         applyBriefing(lines, false);
       } else {
         // 1회 재합성 후에도 실패 — 폴백: 확정 사실 원문을 그대로 브리핑 줄로
@@ -1349,7 +1359,7 @@
     const area = $("bedtime-image-area");
     area.textContent = "";
     if (record.mode === "sample") {
-      area.appendChild(makePhotoPlaceholder("Sample day — no photo"));
+      area.appendChild(makePhotoPlaceholder(t("photo.sampleNone")));
       return;
     }
     if (styleImageUrl) {
@@ -1548,7 +1558,7 @@
     item.appendChild(text);
     const meta = document.createElement("div");
     meta.className = "chips";
-    meta.appendChild(makeChip("unknown: " + card.unknownId, ""));
+    meta.appendChild(makeChip(t("question.unknownChip", { id: card.unknownId }), ""));
     item.appendChild(meta);
     wrap.appendChild(item);
   }
@@ -1589,7 +1599,7 @@
       item.className = "testimony-item";
       const time = document.createElement("span");
       time.className = "testimony-time";
-      time.textContent = new Date(entry.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+      time.textContent = new Date(entry.at).toLocaleTimeString(currentLocale(), { hour: "2-digit", minute: "2-digit" });
       const text = document.createElement("span");
       text.textContent = entry.text; // 부모가 적은 증언 — textContent로만
       item.appendChild(time);

@@ -23,8 +23,10 @@ Sample mode requires **no API key of yours**. Extraction replays a real recorded
 1. Open https://tuck-and-whisper.pages.dev.
 2. Tap **Load sample day**.
 3. Review the candidate facts at Gate 1: reject one candidate and confirm the rest.
-4. Open the preview: the briefing and the question card cite confirmed facts only.
+4. Open the preview: the briefing and the question card cite confirmed facts only. The question card is manual — pick premise chips, then tap **Draft the question**.
 5. View the bedtime page: sentences cite only confirmed fact IDs, and the rejected candidate never appears.
+
+Note: sample mode carries **no photo and no stylization** — those need a real capture. The briefing, question card, and page sentences still run live through the project's Worker.
 
 ## What It Is & The Problem
 
@@ -70,8 +72,11 @@ All runtime AI calls use Meta models through the Meta Model API:
 |---|---|---|---|---|
 | Transcription | Muse Voice Transcribe 1.0 | Scribe | per memo (seconds of audio) | ~$0.001 |
 | Fact Extraction | Muse Spark 1.3 | Witness | 4,418 input tokens; 1,235 output tokens (reasoning_effort=low) | ~$0.011 |
+| Briefing Composition | Muse Spark 1.3 | Witness | live run, 2026-11-01 (12 confirmed sample facts) | ~$0.0065 |
+| Page Composition | Muse Spark 1.3 | Witness | live run, 2026-11-01 (12 confirmed sample facts) | ~$0.0061 |
+| Question Draft | Muse Spark 1.3 | Witness | live run, 2026-11-01 (12 confirmed sample facts) | ~$0.0027 |
 | Photo Restyling | Muse Image 1.0 | Illustrator | img2img restyling from real photo | $0.010 (flat) |
-| **Total per night** | | | | **≈ $0.022** |
+| **Total per night** | | | | **≈ $0.037** |
 
 ### Reasoning Effort Measurement
 

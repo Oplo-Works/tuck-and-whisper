@@ -1,4 +1,7 @@
-// Tuck and Whisper — service worker v12.
+// Tuck and Whisper — service worker v13.
+// v13 변경: 감사 P2 정리(i18n 잔재 4종 t() 이관·전사 실패 복구 상태·previewRawSnippet 초기화)가
+//           닿게 CACHE 를 taw-shell-v13 으로 올린다. activate 에서 옛 캐시(taw-shell-v12
+//           포함)를 전부 삭제한다.
 // v12 변경: DS-1 동시 작업 무효화·사진 미디어 초기화·진입 가드 수정 반영.
 // v11 변경: 23개 언어 테이블 추가(i18n.js 25개 언어 완성)가 닿게 CACHE 를 taw-shell-v11 로
 //           올린다. activate 에서 옛 캐시(taw-shell-v10 포함)를 전부 삭제한다.
@@ -21,7 +24,7 @@
 // - HTML 문서(페이지 이동 요청)는 network-first: 네트워크에서 먼저 받고, 성공하면 캐시를
 //   갱신하고, 실패할 때만 캐시를 내준다 — index.html 을 고치면 폰에 새 배포가 바로 닿는다.
 // - 그 외 정적 파일은 기존 방식(cache-first)을 유지한다. API(/api/) 트래픽은 절대 캐시하지 않는다.
-const CACHE = 'taw-shell-v12';
+const CACHE = 'taw-shell-v13';
 // index.html 이 이제 외부 core.js/i18n.js/app.js 에 의존하므로 오프라인 셸에 함께 넣는다.
 const SHELL = ['./', './index.html', './core.js', './i18n.js', './app.js', './manifest.json', './icon.svg'];
 
