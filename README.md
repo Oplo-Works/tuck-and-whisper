@@ -120,6 +120,7 @@ The PWA talks to a thin Cloudflare Worker that holds the key server-side (the ke
 ## Honesty Notes
 
 - **Single-device role switch:** The demo runs on one device with an in-app role switch between the daytime parent and the bedtime parent. It is **not** real two-parent sync, and nothing in the app or this README should be read as claiming it is.
+- **UI translations:** English and Korean are maintained by hand. The other 23 interface languages are machine-generated (Muse Spark) and **unreviewed** — machine translation only.
 
 ## License
 
