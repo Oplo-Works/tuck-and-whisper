@@ -7,6 +7,85 @@
 
   const T = window.TawCore;
 
+  // --- i18n (S-i18n): 표시 문자열만 t() 경유 — 프로토콜은 한국어 불변이다 ---
+  // i18n.js가 없는 환경(vm 하니스)에서는 하니스가 텍스트로 클릭하는 결정 버튼 라벨만
+  // 한국어로 유지한다 (하니스 프로토콜 계약 — 클릭 대상 텍스트가 바뀌면 검증이 깨진다).
+  const I = window.TAW_I18N || null;
+  const LANG_KEY = "taw-lang"; // taw-day-v1 데이터 계약과 별개 저장
+  const PROTOCOL_LABEL_FALLBACK = { "decision.confirm": "확정", "decision.reject": "거절", "decision.undecided": "미결정" };
+  function t(key, vars) {
+    if (I) return I.t(key, vars);
+    return PROTOCOL_LABEL_FALLBACK[key] || key;
+  }
+  function voiceBias() {
+    const info = I ? I.languageInfo(I.getLanguage()) : null;
+    return info && info.bias ? info.bias : "Korean";
+  }
+
+  // 정적(data-i18n) 일괄 교체 + <html lang/dir> 연동 (ar만 rtl).
+  function applyI18nStatic() {
+    if (!I) return;
+    const lang = I.getLanguage();
+    const info = I.languageInfo(lang) || { rtl: false };
+    if (document.documentElement) {
+      document.documentElement.lang = lang;
+      document.documentElement.dir = info.rtl ? "rtl" : "ltr";
+    }
+    if (typeof document.querySelectorAll !== "function") return; // 하니스 DOM — 정적 치환 대상 없음
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      const key = el.getAttribute("data-i18n");
+      const v = I.t(key);
+      if (v !== key) el.textContent = v; // 없는 키는 원문 유지
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach(function (el) {
+      const key = el.getAttribute("data-i18n-ph");
+      const v = I.t(key);
+      if (v !== key) el.setAttribute("placeholder", v);
+    });
+  }
+
+  function initI18n() {
+    if (!I) return;
+    const langs = I.languages(); // 테이블에 있는 언어만 노출 — 23개가 들어오면 자동으로 늘어난다
+    const select = $("lang-select");
+    select.textContent = "";
+    for (const l of langs) {
+      const opt = document.createElement("option");
+      opt.value = l.code;
+      opt.textContent = l.name;
+      select.appendChild(opt);
+    }
+    let saved = null;
+    try { saved = localStorage.getItem(LANG_KEY); } catch (err) { saved = null; }
+    const has = function (code) { return langs.some(function (l) { return l.code === code; }); };
+    let lang = saved && has(saved) ? saved : "";
+    if (!lang) {
+      const nav = String((typeof navigator !== "undefined" && navigator.language) || "");
+      const base = nav.split("-")[0];
+      lang = has(base) ? base : "en"; // 첫 실행: 브라우저 언어(지원 집합 내) → en
+    }
+    I.setLanguage(lang);
+    select.value = lang;
+    applyI18nStatic();
+  }
+
+  function onLanguageChange(e) {
+    if (!I) return;
+    const select = $("lang-select");
+    const lang = e && e.target && e.target.value ? e.target.value : select.value;
+    I.setLanguage(lang);
+    try { localStorage.setItem(LANG_KEY, lang); } catch (err) { /* 저장이 막힌 환경 — 세션만 */ }
+    applyI18nStatic();
+    // 동적 문자열 재렌더 — 렌더 함수는 전부 t()를 다시 읽는다
+    renderCaptureScreen();
+    renderGate1Screen();
+    renderConfirmedScreen();
+    renderPreviewScreen();
+    renderBedtimeScreen();
+    renderPreviewRestricted();
+    renderBedtimeRestricted();
+  }
+
   // Worker 기본 URL — 브리프 v2: "코드 상수로 그대로 쓸 것". API 키는 여기 없다 (Worker Secret에만 있다).
   const WORKER_URL = "https://taw-meta-proxy.minkyuthebuilder.workers.dev";
 
@@ -127,9 +206,9 @@
   }
 
   function decisionLabel(decision) {
-    if (decision === "confirmed") return "확정";
-    if (decision === "rejected") return "거절";
-    return "미결정";
+    if (decision === "confirmed") return t("decision.confirm");
+    if (decision === "rejected") return t("decision.reject");
+    return t("decision.undecided");
   }
 
   function makePhotoPlaceholder(text) {
@@ -146,7 +225,7 @@
   function renderCaptureScreen() {
     $("memo-input").value = record.memoText;
     $("photo-status").textContent = photoFile
-      ? "선택한 사진: " + photoFile.name + " — 사진은 저장되지 않는다 (새로고침하면 사라진다)."
+      ? t("capture.selectedPhoto", { name: photoFile.name })
       : "";
     updateExtractButton();
     updateVoiceButton();
@@ -163,7 +242,7 @@
 
   function setExtractRunning(running) {
     const btn = $("extract-btn");
-    btn.textContent = running ? "추출 중…" : "추출";
+    btn.textContent = running ? t("capture.extracting") : t("capture.extract");
     btn.disabled = running;
   }
 
@@ -185,7 +264,7 @@
 
   function onMemoInput() {
     if (record.candidates.length > 0 || record.unknowns.length > 0) {
-      invalidateForChangedInput("메모가 바뀌어 이전 추출 결과(후보·결정)를 전부 무효화했다.");
+      invalidateForChangedInput(t("capture.invalidatedMemo"));
     } else {
       // 후보가 없어도 메모 텍스트는 새 record 객체로 반영된다 — 진행 중 토큰의 레코드와 달라진다.
       record = Object.assign({}, record, { memoText: $("memo-input").value });
@@ -205,7 +284,7 @@
     if (photoFile) {
       photoUrl = URL.createObjectURL(photoFile); // 세션 전용 썸네일용 — 저장 금지
     }
-    invalidateForChangedInput("사진이 바뀌어 이전 추출 결과(후보·결정)를 전부 무효화했다.");
+    invalidateForChangedInput(t("capture.invalidatedPhoto"));
     renderCaptureScreen();
   }
 
@@ -253,7 +332,7 @@
           return JSON.parse(stripped.slice(start, end + 1));
         } catch (secondErr) { /* 아래에서 원문과 함께 실패 처리 */ }
       }
-      const err = new Error(what + "를 JSON으로 읽을 수 없다");
+      const err = new Error(t("error.cannotReadJson", { what: what }));
       err.rawSnippet = stripped.slice(0, 400);
       throw err;
     }
@@ -263,7 +342,7 @@
   function parseSparkContent(content) {
     const raw = JSON.parse(stripCodeFence(content));
     if (!raw || typeof raw !== "object" || !Array.isArray(raw.candidates)) {
-      throw new Error("응답 구조가 계약과 다르다 (candidates가 배열이 아님)");
+      throw new Error(t("error.badShapeCandidates"));
     }
     return raw;
   }
@@ -298,20 +377,20 @@
       });
       rawText = await response.text();
       if (!response.ok) {
-        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+        throw new Error(t("error.workerHttp", { status: response.status }));
       }
       let payload;
       try {
         payload = JSON.parse(rawText);
       } catch (err) {
-        throw new Error("응답이 JSON이 아니다");
+        throw new Error(t("error.notJson"));
       }
       const content = payload && payload.choices && payload.choices[0] &&
         payload.choices[0].message ? payload.choices[0].message.content : undefined;
-      if (typeof content !== "string") {
-        throw new Error("응답에 choices[0].message.content가 없다");
-      }
-      const raw = parseSparkContent(content);
+    if (typeof content !== "string") {
+      throw new Error(t("error.noContent"));
+    }
+    const raw = parseSparkContent(content);
 
       // 늦은 응답 가드: 입력이 바뀌어 record가 교체됐으면(발급 토큰이 무효화됐으면) 조용히 버린다.
       if (record !== token.record) return;
@@ -322,7 +401,7 @@
       persist();
       if (record.candidates.length === 0) {
         // 형식은 맞지만 확정 가능한 후보가 0개 — 무효한 추출로는 Gate 1에 진입하지 않는다.
-        showCaptureError("후보를 하나도 만들지 못했다. 디버그 영역을 확인하고 다시 시도할 수 있다.", rawText);
+        showCaptureError(t("capture.noCandidates"), rawText);
         return;
       }
       renderGate1Screen();
@@ -331,8 +410,7 @@
       // 실패 계약: 오류 배너 + 입력(사진·메모) 유지 + 재시도 가능.
       if (record !== token.record) return; // 이미 무효화된 세션 — 늦은 실패는 소음이 된다
       showCaptureError(
-        "추출에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") +
-        " — 입력은 그대로 남아 있다. 다시 시도할 수 있다.",
+        t("capture.extractFailed", { message: err && err.message ? err.message : t("error.unknown") }),
         rawText
       );
     } finally {
@@ -346,8 +424,8 @@
     $("capture-error").textContent = message;
     $("capture-error").hidden = false;
     // 원문 응답은 텍스트로만 (HTML 해석 금지)
-    $("debug-raw").textContent = "— 오류 —\n" + message +
-      "\n\n— Worker 원문 응답 —\n" + (rawText !== "" ? rawText : "(없음 — 네트워크 오류)");
+    $("debug-raw").textContent = t("debug.errorHeader") + "\n" + message +
+      "\n\n" + t("debug.rawHeader") + "\n" + (rawText !== "" ? rawText : t("debug.none"));
     $("debug-details").hidden = false;
   }
 
@@ -368,8 +446,8 @@
     const input = $("voice-input");
     voiceFile = input.files && input.files[0] ? input.files[0] : null;
     $("voice-status").textContent = voiceFile
-      ? "선택한 녹음: " + voiceFile.name + " (" + (voiceFile.size / 1024 / 1024).toFixed(1) + "MB)" +
-        (voiceFile.size > 32 * 1024 * 1024 ? " — 32MB 초과라 전사할 수 없다" : "")
+      ? t("capture.selectedRecording", { name: voiceFile.name, mb: (voiceFile.size / 1024 / 1024).toFixed(1) }) +
+        (voiceFile.size > 32 * 1024 * 1024 ? t("capture.overSize") : "")
       : "";
     updateVoiceButton();
   }
@@ -380,7 +458,7 @@
 
   function setVoiceRunning(running) {
     const btn = $("transcribe-btn");
-    btn.textContent = running ? "전사 중…" : "음성으로 메모 채우기";
+    btn.textContent = running ? t("capture.transcribing") : t("capture.transcribe");
     btn.disabled = running;
   }
 
@@ -403,7 +481,7 @@
 
   function durationMessage(seconds) {
     const minutes = Math.round(seconds / 60 * 10) / 10;
-    return "녹음이 10분을 초과한다 (약 " + minutes + "분 — 상한 10분). 10분 이하 녹음으로 다시 시도할 수 있다.";
+    return t("capture.durationOver", { minutes: minutes });
   }
 
   function limitError(message) {
@@ -473,7 +551,7 @@
     // 제한 (브리프): 변환·업로드 전에 거부하고 안내한다.
     if (file.size > 32 * 1024 * 1024) {
       showCaptureError(
-        "녹음 파일이 너무 크다 (현재 " + (file.size / 1024 / 1024).toFixed(1) + "MB — 상한 32MB). 더 짧은 녹음으로 다시 시도할 수 있다.",
+        t("capture.fileTooLarge", { mb: (file.size / 1024 / 1024).toFixed(1) }),
         ""
       );
       return;
@@ -486,7 +564,7 @@
 
     transcribing = true;
     setVoiceRunning(true);
-    $("voice-status").textContent = "전사 중… (몇십 초 걸릴 수 있다)";
+    $("voice-status").textContent = t("capture.transcribingLong");
     try {
       // 1) 변환 — 독립 함수. 디코딩 실패 시 브리프 문구 그대로, 메모 칸은 그대로.
       let wavBlob;
@@ -497,8 +575,7 @@
           showCaptureError(err.message, "");
         } else {
           showCaptureError(
-            "이 파일은 변환할 수 없습니다 — 텍스트 메모는 그대로 쓸 수 있다." +
-            " (원인: " + (err && err.message ? err.message : "알 수 없는 오류") + ")",
+            t("capture.cannotConvert", { message: err && err.message ? err.message : t("error.unknown") }),
             ""
           );
         }
@@ -511,7 +588,7 @@
         model: "muse-voice-transcribe-1.0",
         audioEncoding: "WAV",
         mode: "PUSH_TO_TALK",
-        languageBias: ["Korean"],
+        languageBias: [voiceBias()], // 선택 언어의 전체 영어 이름 (예: "Spanish") — 키워드는 불변
         keywords: PROFILE.keywords
       };
       const fd = new FormData();
@@ -520,29 +597,28 @@
       const response = await fetch(WORKER_URL + "/api/voice", { method: "POST", body: fd });
       const rawText = await response.text();
       if (!response.ok) {
-        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+        throw new Error(t("error.workerHttp", { status: response.status }));
       }
       let payload;
       try {
         payload = JSON.parse(rawText);
       } catch (err) {
-        throw new Error("응답이 JSON이 아니다");
+        throw new Error(t("error.notJson"));
       }
       const transcript = payload && payload.transcript;
       if (typeof transcript !== "string" || transcript.trim() === "") {
-        throw new Error("응답에 transcript가 없거나 비어 있다");
+        throw new Error(t("error.noTranscript"));
       }
 
       // 3) 성공 — 응답의 transcript로 메모 칸을 교체한다 (이어 붙이지 않는다).
       //    메모 교체 = 메모 수정 — 기존 무효화 규칙을 그대로 탄다 (후보가 있으면 전부 비워진다).
       $("memo-input").value = transcript;
       onMemoInput();
-      $("voice-status").textContent = "전사 완료 — 메모를 전사 결과로 교체했다.";
+      $("voice-status").textContent = t("capture.transcribeDone");
     } catch (err) {
       // 실패 계약 (S2와 동일): 배너 + 입력 유지 + 재시도 가능
       showCaptureError(
-        "전사에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") +
-        " — 메모와 녹음 선택은 그대로 남아 있다. 다시 시도할 수 있다.",
+        t("capture.transcribeFailed", { message: err && err.message ? err.message : t("error.unknown") }),
         ""
       );
     } finally {
@@ -557,7 +633,7 @@
 
   function renderGate1Screen() {
     // 상단: 모드 / 사진 영역 / 읽기 전용 메모
-    $("gate1-mode").textContent = record.mode === "sample" ? "Sample day" : "라이브 하루";
+    $("gate1-mode").textContent = record.mode === "sample" ? t("mode.sample") : t("mode.live");
     const photoArea = $("gate1-photo-area");
     photoArea.textContent = "";
     if (record.mode === "sample") {
@@ -566,13 +642,13 @@
     } else if (photoUrl) {
       const img = document.createElement("img");
       img.className = "photo-thumb";
-      img.alt = "오늘의 사진 (세션 전용 — 저장되지 않음)";
+      img.alt = t("photo.alt");
       img.src = photoUrl; // 세션 객체 URL — 절대 저장되지 않는다
       photoArea.appendChild(img);
     } else {
-      photoArea.appendChild(makePhotoPlaceholder("사진은 저장되지 않음"));
+      photoArea.appendChild(makePhotoPlaceholder(t("photo.noSaved")));
     }
-    $("gate1-memo").textContent = record.memoText !== "" ? record.memoText : "(메모 없음)";
+    $("gate1-memo").textContent = record.memoText !== "" ? record.memoText : t("memo.none");
 
     // 상태 줄 + 컨트롤
     const undecidedCount = record.candidates.filter(function (c) {
@@ -585,10 +661,10 @@
 
     $("gate1-status").textContent = record.candidates.length === 0
       ? ""
-      : (complete ? "모든 후보를 결정했다." : "남은 후보: " + undecidedCount + "개");
+      : (complete ? t("gate1.allDecided") : t("gate1.remaining", { n: undecidedCount }));
     const batchBtn = $("batch-confirm-btn");
     batchBtn.hidden = undecidedC.length === 0;
-    batchBtn.textContent = "C 등급 일괄 확정 (" + undecidedC.length + "개)";
+    batchBtn.textContent = t("gate1.batchConfirm", { n: undecidedC.length });
     // S8: 확정 목록 화면은 항상 열려 있다 — 프리뷰 경계는 enterPreview 의 분기가 담당한다.
     $("goto-confirmed-btn").disabled = false;
     $("gate1-empty").hidden = record.candidates.length !== 0;
@@ -644,12 +720,12 @@
     const row = document.createElement("div");
     row.className = "card-buttons";
     const confirmBtn = document.createElement("button");
-    confirmBtn.textContent = "확정";
+    confirmBtn.textContent = t("decision.confirm");
     confirmBtn.addEventListener("click", function () {
       applyDecision(candidate.id, "confirmed");
     });
     const rejectBtn = document.createElement("button");
-    rejectBtn.textContent = "거절";
+    rejectBtn.textContent = t("decision.reject");
     rejectBtn.addEventListener("click", function () {
       applyDecision(candidate.id, "rejected");
     });
@@ -719,21 +795,14 @@
   // ---------------------------------------------------------------
 
   // 일반 회상 질문 고정 풀: 미확정 후보·unknowns를 어떤 형태로도 참조하지 않는
-  // 중립 문장만. 모델 생성 금지 — 이 배열이 유일한 질문원이다.
-  const GENERIC_RECALL_QUESTIONS = [
-    "오늘 가장 기억에 남는 순간은 뭐였어?",
-    "오늘 누구랑 제일 오래 놀았어?",
-    "오늘 제일 신기했던 것은 뭐였어?",
-    "오늘 제일 크게 웃었던 순간은 언제였어?",
-    "오늘 밖에서 본 것 중에 제일 기억에 남는 건 뭐였어?",
-    "오늘 새로 알게 된 것이 있다면 뭐였어?"
-  ];
+  // 중립 문장만. 모델 생성 금지 — i18n 테이블의 언어별 6문장(restricted.q1~q6)이 유일한 질문원.
+  const GENERIC_QUESTION_COUNT = 6;
 
   // 로컬 날짜 기반 결정론 회전 — 같은 날이면 어느 화면에서든 같은 질문.
   function genericRecallQuestion(now) {
     const d = now || new Date();
     const dayIndex = d.getFullYear() * 1000 + d.getMonth() * 31 + d.getDate();
-    return GENERIC_RECALL_QUESTIONS[dayIndex % GENERIC_RECALL_QUESTIONS.length];
+    return t("restricted.q" + ((dayIndex % GENERIC_QUESTION_COUNT) + 1));
   }
 
   // 제한 화면 사진 영역: 세션 이미지가 있을 때만 원본 사진을 보인다. 스타일화 버튼은
@@ -747,7 +816,7 @@
     if (photoUrl) {
       const img = document.createElement("img");
       img.className = "photo-thumb";
-      img.alt = "오늘의 사진 (세션 전용 — 저장되지 않음)";
+      img.alt = t("photo.alt");
       img.src = photoUrl; // 세션 객체 URL — 절대 저장되지 않는다
       area.appendChild(img);
     }
@@ -815,14 +884,14 @@
   }
 
   function renderPreviewScreen() {
-    $("preview-mode").textContent = record.mode === "sample" ? "Sample day" : "라이브 하루";
+    $("preview-mode").textContent = record.mode === "sample" ? t("mode.sample") : t("mode.live");
     const confirmed = T.synthesisFacts(record);
     const noFacts = confirmed.length === 0;
     $("preview-no-facts").hidden = !noFacts;
     $("preview-main").hidden = noFacts;
     if (noFacts) return;
 
-    $("preview-synth-status").textContent = synthesizing ? "브리핑을 만들고 있다…" : "";
+    $("preview-synth-status").textContent = synthesizing ? t("preview.composing") : "";
     $("preview-error").hidden = previewError === "";
     $("preview-error").textContent = previewError;
     $("preview-fallback-notice").hidden = !(briefingFallbackNotice && record.briefing);
@@ -864,7 +933,8 @@
       const chip = makeChip(factId, "chip-fact");
       chip.addEventListener("click", function () {
         detail.hidden = !detail.hidden;
-        detail.textContent = "원문 (" + factId + "): " + (factTextById[factId] || "(현재 확정 목록에 없는 사실이다)");
+        // 하니스 프로토콜 형식("원문 (ID):") — 페이지 문장과 동일하게 한국어 고정 (빠진 사실 안내문만 t()).
+        detail.textContent = "원문 (" + factId + "): " + (factTextById[factId] || t("provenance.missing"));
       });
       chips.appendChild(chip);
     }
@@ -934,7 +1004,7 @@
       }
     } catch (err) {
       if (record !== token.record) return;
-      previewError = "브리핑 합성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+      previewError = t("preview.briefingFailed", { message: err && err.message ? err.message : t("error.unknown") });
       previewRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
       synthesizing = false;
@@ -963,22 +1033,22 @@
     });
     const rawText = await response.text();
     if (!response.ok) {
-      throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+      throw new Error(t("error.workerHttp", { status: response.status }));
     }
     let payload;
     try {
       payload = JSON.parse(rawText);
     } catch (err) {
-      throw new Error("응답이 JSON이 아니다");
+      throw new Error(t("error.notJson"));
     }
     const content = payload && payload.choices && payload.choices[0] &&
       payload.choices[0].message ? payload.choices[0].message.content : undefined;
     if (typeof content !== "string") {
-      throw new Error("응답에 choices[0].message.content가 없다");
+      throw new Error(t("error.noContent"));
     }
-    const raw = parseModelJson(content, "브리핑 답안");
+    const raw = parseModelJson(content, t("parse.briefing"));
     if (!raw || typeof raw !== "object" || !Array.isArray(raw.lines)) {
-      const err = new Error("응답 구조가 계약과 다르다 (lines가 배열이 아님)");
+      const err = new Error(t("error.badShapeLines"));
       err.rawSnippet = content.slice(0, 400);
       throw err;
     }
@@ -1009,7 +1079,7 @@
     select.textContent = "";
     if (record.unknowns.length === 0) {
       const opt = document.createElement("option");
-      opt.textContent = "unknown이 없다";
+      opt.textContent = t("question.noUnknown");
       select.appendChild(opt);
       select.disabled = true;
     } else {
@@ -1039,10 +1109,10 @@
     $("question-text").value = card ? card.text : "";
     $("question-text").readOnly = !card; // 초안이 생겨야 수정할 수 있다
     $("draft-btn").disabled = questionDrafting || record.unknowns.length === 0;
-    $("draft-btn").textContent = questionDrafting ? "초안 작성 중…" : "질문 초안 만들기";
+    $("draft-btn").textContent = questionDrafting ? t("question.drafting") : t("preview.draft");
     $("question-card-meta").textContent = card
-      ? "unknown: " + card.unknownId + " · 전제: " + (card.premiseFactIds.length > 0 ? card.premiseFactIds.join(", ") : "없음") + " — 텍스트는 직접 고칠 수 있다."
-      : "아직 초안이 없다 — unknown과 전제를 고르고 초안을 만들면 수정할 수 있다.";
+      ? t("question.meta", { id: card.unknownId, ids: card.premiseFactIds.length > 0 ? card.premiseFactIds.join(", ") : t("question.none") })
+      : t("question.noDraft");
   }
 
   function togglePremise(factId) {
@@ -1106,22 +1176,22 @@
       });
       const rawText = await response.text();
       if (!response.ok) {
-        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+        throw new Error(t("error.workerHttp", { status: response.status }));
       }
       let payload;
       try {
         payload = JSON.parse(rawText);
       } catch (err) {
-        throw new Error("응답이 JSON이 아니다");
+        throw new Error(t("error.notJson"));
       }
       const content = payload && payload.choices && payload.choices[0] &&
         payload.choices[0].message ? payload.choices[0].message.content : undefined;
       if (typeof content !== "string") {
-        throw new Error("응답에 choices[0].message.content가 없다");
+        throw new Error(t("error.noContent"));
       }
       const raw = JSON.parse(stripCodeFence(content));
       if (!raw || typeof raw !== "object" || typeof raw.text !== "string" || raw.text.trim() === "") {
-        throw new Error("응답 구조가 계약과 다르다 (text가 없다)");
+        throw new Error(t("error.badShapeText"));
       }
       if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
       record = Object.assign({}, record, {
@@ -1130,7 +1200,7 @@
       persist();
     } catch (err) {
       if (record !== token.record) return;
-      previewError = "질문 초안 작성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+      previewError = t("question.draftFailed", { message: err && err.message ? err.message : t("error.unknown") });
     } finally {
       questionDrafting = false;
       renderPreviewScreen();
@@ -1171,7 +1241,7 @@
   }
 
   function renderBedtimeScreen() {
-    $("bedtime-mode").textContent = record.mode === "sample" ? "Sample day" : "라이브 하루";
+    $("bedtime-mode").textContent = record.mode === "sample" ? t("mode.sample") : t("mode.live");
     const confirmed = T.synthesisFacts(record);
     const noFacts = confirmed.length === 0;
     $("bedtime-no-facts").hidden = !noFacts;
@@ -1180,7 +1250,7 @@
 
     renderBedtimeImageArea();
     $("bedtime-fallback-notice").hidden = !(pageFallbackNotice && record.pageSentences.length > 0);
-    $("bedtime-synth-status").textContent = pageSynthesizing ? "페이지 문장을 만들고 있다…" : "";
+    $("bedtime-synth-status").textContent = pageSynthesizing ? t("page.composing") : "";
     $("bedtime-error").hidden = pageError === "";
     $("bedtime-error").textContent = pageError;
     $("bedtime-debug").hidden = pageRawSnippet === "";
@@ -1215,24 +1285,24 @@
     if (styleImageUrl) {
       const img = document.createElement("img");
       img.className = "photo-thumb";
-      img.alt = "오늘의 그림 (세션 전용 — 저장되지 않음)";
+      img.alt = t("picture.alt");
       img.src = styleImageUrl;
       area.appendChild(img);
     } else if (photoDataUrl) {
       const btn = document.createElement("button");
       btn.id = "stylize-btn";
-      btn.textContent = stylizing ? "그림 만드는 중…" : "사진을 그림으로 바꾸기";
+      btn.textContent = stylizing ? t("bedtime.stylizing") : t("bedtime.stylize");
       btn.disabled = stylizing;
       btn.addEventListener("click", runStylization);
       area.appendChild(btn);
       const hint = document.createElement("p");
       hint.className = "hint";
-      hint.textContent = "스타일화는 세션 안에서만 표시된다 — 저장되지 않는다.";
+      hint.textContent = t("bedtime.stylizeHint");
       area.appendChild(hint);
     } else {
       const notice = document.createElement("p");
       notice.className = "hint";
-      notice.textContent = "사진은 저장되지 않아 그림은 새로고침하면 사라져요 — 문장만 표시한다.";
+      notice.textContent = t("bedtime.stylizeNoPhoto");
       area.appendChild(notice);
     }
     if (styleError !== "") {
@@ -1261,7 +1331,9 @@
     for (const factId of sentence.factIds) {
       const prov = document.createElement("div");
       prov.className = "provenance";
-      prov.textContent = "원문 (" + factId + "): " + (factTextById[factId] || "(현재 확정 목록에 없는 사실이다)");
+      // 하니스 v2가 이 렌더 형식("원문 (ID):")을 정규식으로 검증한다 — 교정 피드백 형식과
+      // 같은 내부 프로토콜이라 UI 언어를 따르지 않는다 (빠진 사실 안내문만 t() 경유).
+      prov.textContent = "원문 (" + factId + "): " + (factTextById[factId] || t("provenance.missing"));
       card.appendChild(prov);
     }
     return card;
@@ -1319,7 +1391,7 @@
       }
     } catch (err) {
       if (record !== token.record) return;
-      pageError = "페이지 합성에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 다시 시도할 수 있다.";
+      pageError = t("page.composeFailed", { message: err && err.message ? err.message : t("error.unknown") });
       pageRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
       pageSynthesizing = false;
@@ -1348,22 +1420,22 @@
     });
     const rawText = await response.text();
     if (!response.ok) {
-      throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+      throw new Error(t("error.workerHttp", { status: response.status }));
     }
     let payload;
     try {
       payload = JSON.parse(rawText);
     } catch (err) {
-      throw new Error("응답이 JSON이 아니다");
+      throw new Error(t("error.notJson"));
     }
     const content = payload && payload.choices && payload.choices[0] &&
       payload.choices[0].message ? payload.choices[0].message.content : undefined;
     if (typeof content !== "string") {
-      throw new Error("응답에 choices[0].message.content가 없다");
+      throw new Error(t("error.noContent"));
     }
-    const raw = parseModelJson(content, "페이지 답안");
+    const raw = parseModelJson(content, t("parse.page"));
     if (!raw || typeof raw !== "object" || !Array.isArray(raw.sentences)) {
-      const err = new Error("응답 구조가 계약과 다르다 (sentences가 배열이 아님)");
+      const err = new Error(t("error.badShapeSentences"));
       err.rawSnippet = content.slice(0, 400);
       throw err;
     }
@@ -1391,7 +1463,7 @@
     if (!card || card.text.trim() === "") {
       const notice = document.createElement("p");
       notice.className = "hint";
-      notice.textContent = "프리뷰에서 질문 카드를 만들 수 있어요.";
+      notice.textContent = t("question.makeInPreview");
       wrap.appendChild(notice);
       return;
     }
@@ -1477,19 +1549,19 @@
       });
       const rawText = await response.text();
       if (!response.ok) {
-        throw new Error("Worker가 HTTP " + response.status + "로 답했다");
+        throw new Error(t("error.workerHttp", { status: response.status }));
       }
       let payload;
       try {
         payload = JSON.parse(rawText);
       } catch (err) {
-        throw new Error("응답이 JSON이 아니다");
+        throw new Error(t("error.notJson"));
       }
       let imageData = payload && payload.data && payload.data[0] &&
         (payload.data[0].b64_json || payload.data[0].url);
       if (!imageData) imageData = payload && (payload.image || payload.url || payload.b64_json);
       if (typeof imageData !== "string" || imageData === "") {
-        const err = new Error("응답에서 이미지를 찾지 못했다 (응답 형식 미문서)");
+        const err = new Error(t("error.noImage"));
         err.rawSnippet = rawText.slice(0, 400);
         throw err;
       }
@@ -1503,7 +1575,7 @@
         : "data:image/png;base64," + imageData;
     } catch (err) {
       if (record !== token.record) return;
-      styleError = "스타일화에 실패했다: " + (err && err.message ? err.message : "알 수 없는 오류");
+      styleError = t("style.failed", { message: err && err.message ? err.message : t("error.unknown") });
       styleRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
       stylizing = false;
@@ -1679,6 +1751,9 @@
     $("testimony-input-restricted").addEventListener("keydown", function (e) {
       if (e.key === "Enter") saveTestimonyRestricted();
     });
+
+    // 언어 선택 (S-i18n) — 저장은 taw-lang, taw-day-v1과 별개
+    $("lang-select").addEventListener("change", onLanguageChange);
   }
 
   // ---------------------------------------------------------------
@@ -1687,6 +1762,7 @@
 
   function init() {
     wireStaticHandlers();
+    initI18n(); // 첫 렌더 전에 언어 확정 — 렌더는 t()를 읽는다
     let saved = null;
     try {
       saved = T.restore(localStorage.getItem(T.STORAGE_KEY));
