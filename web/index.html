@@ -60,6 +60,7 @@
   .confirm-overlay[hidden]{display:none}
   .confirm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%}
   .confirm-card p{margin:0 0 12px;font-size:15px}
+  .recall-question{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;font-size:16px}
 </style>
 </head>
 <body>
@@ -214,6 +215,41 @@
     </div>
   </section>
 
+  <!-- 화면 6: 프리뷰 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
+  <section id="screen-preview-restricted" hidden>
+    <div class="card">
+      <h2>취침 전 프리뷰</h2>
+      <span class="chip" id="preview-restricted-mode"></span>
+      <div id="preview-restricted-photo-area"></div>
+      <div class="notice">오늘은 사진과 질문이 먼저 도착했어요</div>
+      <p class="recall-question" id="preview-restricted-question"></p>
+      <div>
+        <button id="open-bedtime-restricted-btn" class="primary">취침 페이지</button>
+        <button id="back-to-confirmed-from-restricted-btn">← 확정 목록</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 7: 취침 페이지 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
+  <section id="screen-bedtime-restricted" hidden>
+    <div class="card">
+      <h2>취침 페이지</h2>
+      <span class="chip" id="bedtime-restricted-mode"></span>
+      <div id="bedtime-restricted-image-area"></div>
+      <div class="notice">오늘은 사진과 질문이 먼저 도착했어요</div>
+      <h3>질문</h3>
+      <p class="recall-question" id="bedtime-restricted-question"></p>
+      <h3>증언</h3>
+      <p class="hint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
+      <input type="text" id="testimony-input-restricted" placeholder="아이의 대답 한 마디">
+      <button id="save-testimony-btn-restricted">기록</button>
+      <div id="testimony-list-restricted"></div>
+      <div>
+        <button id="back-to-preview-from-restricted-btn">← 프리뷰</button>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <!-- 새 하루 확인 모달 -->
@@ -226,7 +262,7 @@
     </div>
   </div>
 </div>
-<footer>build: s7-fix (shell v8)</footer>
+<footer>build: s8-restricted (shell v9)</footer>
 <script src="core.js"></script>
 <script src="app.js"></script>
 </body>

@@ -1,4 +1,6 @@
-// Tuck and Whisper — service worker v8.
+// Tuck and Whisper — service worker v9.
+// v9 변경: S8 제한 모드(PHOTO_PROMPT_ONLY 화면)가 닿게 CACHE 를 taw-shell-v9 로 올린다.
+//          activate 에서 옛 캐시(taw-shell-v8 포함)를 전부 삭제한다.
 // v8 변경: S7-fix(교정 피드백 경계·NFC 누출 검사·소진 ID)가 닿게 CACHE 를 taw-shell-v8 로 올린다.
 //          activate 에서 옛 캐시(taw-shell-v7 포함)를 전부 삭제한다.
 // v7 변경: 새 하루 확인 단계(라벨 "새 하루 시작" 포함)가 닿게 CACHE 를 taw-shell-v7 로 올린다.
@@ -16,7 +18,7 @@
 // - HTML 문서(페이지 이동 요청)는 network-first: 네트워크에서 먼저 받고, 성공하면 캐시를
 //   갱신하고, 실패할 때만 캐시를 내준다 — index.html 을 고치면 폰에 새 배포가 바로 닿는다.
 // - 그 외 정적 파일은 기존 방식(cache-first)을 유지한다. API(/api/) 트래픽은 절대 캐시하지 않는다.
-const CACHE = 'taw-shell-v8';
+const CACHE = 'taw-shell-v9';
 // index.html 이 이제 외부 core.js/app.js 에 의존하므로 오프라인 셸에 함께 넣는다.
 const SHELL = ['./', './index.html', './core.js', './app.js', './manifest.json', './icon.svg'];
 

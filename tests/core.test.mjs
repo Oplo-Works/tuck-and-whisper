@@ -13,6 +13,7 @@ const {
   validateComposition,
   checkLeaks,
   gate1Complete,
+  outputMode,
   invalidateExtraction,
   serialize,
   restore,
@@ -710,6 +711,40 @@ test("applyExtraction은 소진 ID를 정규화까지 전달한다 (A3 — 앱�
   const token = beginExtraction(base);
   const out = applyExtraction(base, token, SPARK_TWO, new Set(["F1", "F2"]));
   assert.deepEqual(out.candidates.map((c) => c.id), ["F3", "F4"]);
+});
+
+// ---------------------------------------------------------------------
+console.log("S8: outputMode 파생 상태");
+// ---------------------------------------------------------------------
+
+test("outputMode: Gate 1 완료 + 확정 ≥1이면 CONFIRMED_BRIEF다 (S8)", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const half = setDecision(rec, "F1", "confirmed");
+  const complete = setDecision(half, "F2", "rejected");
+  assert.equal(outputMode(complete), "CONFIRMED_BRIEF");
+});
+
+test("outputMode: 미결정 후보가 남으면 PHOTO_PROMPT_ONLY다 (S8)", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const half = setDecision(rec, "F1", "confirmed");
+  assert.equal(outputMode(half), "PHOTO_PROMPT_ONLY");
+});
+
+test("outputMode: 전부 거절해도 PHOTO_PROMPT_ONLY다 — 자동 확정은 없다 (S8)", () => {
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const allRejected = setDecision(setDecision(rec, "F1", "rejected"), "F2", "rejected");
+  assert.equal(gate1Complete(allRejected), true); // 완료여도 확정 0이면 제한 모드다
+  assert.equal(outputMode(allRejected), "PHOTO_PROMPT_ONLY");
+});
+
+test("outputMode: 빈 레코드는 PHOTO_PROMPT_ONLY, mode 축(sample/live)과 혼용되지 않는다 (S8)", () => {
+  assert.equal(outputMode(createDayRecord()), "PHOTO_PROMPT_ONLY");
+  const rec = recordFromRaw("메모", SPARK_TWO);
+  const sample = Object.assign(
+    setDecision(setDecision(rec, "F1", "confirmed"), "F2", "confirmed"),
+    { mode: "sample" }
+  );
+  assert.equal(outputMode(sample), "CONFIRMED_BRIEF");
 });
 
 // ---------------------------------------------------------------------

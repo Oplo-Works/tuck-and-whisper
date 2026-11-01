@@ -253,6 +253,15 @@
       });
   }
 
+  // 출력 모드 (S8): 화면에 무엇을 보여줄지의 파생 상태 — 저장하지 않는다.
+  // CONFIRMED_BRIEF: Gate 1 완료 + 확정 ≥1 (기존 프리뷰). 그 외(미완료·전부 거절·빈
+  // 레코드)는 PHOTO_PROMPT_ONLY. DayRecord.mode(sample/live)와 별개 축 — 혼용 금지.
+  function outputMode(record) {
+    return (gate1Complete(record) && confirmedFacts(record).length > 0)
+      ? "CONFIRMED_BRIEF"
+      : "PHOTO_PROMPT_ONLY";
+  }
+
   // 합성 경계 (S4): 합성 payload는 이 반환값으로만 만든다 —
   // 화면 층이 record.candidates를 직접 읽어 합성 입력을 만드는 것은 금지다.
   function synthesisFacts(record) {
@@ -590,6 +599,7 @@
     validateComposition: validateComposition,
     checkLeaks: checkLeaks,
     gate1Complete: gate1Complete,
+    outputMode: outputMode,
     invalidateExtraction: invalidateExtraction,
     serialize: serialize,
     restore: restore,

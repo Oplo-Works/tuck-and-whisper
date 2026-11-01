@@ -96,7 +96,7 @@
   function $(id) { return document.getElementById(id); }
 
   // --- 화면 전환 (단일 헬퍼) ---
-  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed", "screen-preview", "screen-bedtime"];
+  const SCREENS = ["screen-capture", "screen-gate1", "screen-confirmed", "screen-preview", "screen-preview-restricted", "screen-bedtime", "screen-bedtime-restricted"];
   function showScreen(id) {
     for (const sid of SCREENS) {
       $(sid).hidden = sid !== id;
@@ -589,7 +589,8 @@
     const batchBtn = $("batch-confirm-btn");
     batchBtn.hidden = undecidedC.length === 0;
     batchBtn.textContent = "C 등급 일괄 확정 (" + undecidedC.length + "개)";
-    $("goto-confirmed-btn").disabled = !complete;
+    // S8: 확정 목록 화면은 항상 열려 있다 — 프리뷰 경계는 enterPreview 의 분기가 담당한다.
+    $("goto-confirmed-btn").disabled = false;
     $("gate1-empty").hidden = record.candidates.length !== 0;
 
     // 후보 카드
@@ -705,8 +706,74 @@
       list.appendChild(li);
     }
     $("confirmed-empty").hidden = facts.length !== 0;
-    // 프리뷰 진입 버튼도 같은 조건으로 잠근다: Gate 1 미완료 또는 확정 0이면 진입 불가.
-    $("open-preview-btn").disabled = !T.gate1Complete(record) || facts.length === 0;
+    // S8: 프리뷰 진입은 항상 가능 — enterPreview 의 분기(CONFIRMED_BRIEF/제한 모드)가 경계다.
+    $("open-preview-btn").disabled = false;
+  }
+
+  // ---------------------------------------------------------------
+  // 제한 모드 (S8, PHOTO_PROMPT_ONLY) — 게이트 1이 마감까지 완료되지 않은 밤.
+  // 브리핑·unknowns 질문 카드·페이지 문장·스타일화·메모 원문은 절대 없다 — 합성 호출
+  // 자체가 없다 (이 모드에서 Worker 합성 요청이 나가면 그 자체가 실패다). 상태는
+  // 파생값(T.outputMode)으로만 계산되고 아무것도 저장하지 않는다 — 게이트 1이
+  // 완료되면 다음 진입부터 일반 프리뷰가 자동으로 대체한다 (대체 규칙).
+  // ---------------------------------------------------------------
+
+  // 일반 회상 질문 고정 풀: 미확정 후보·unknowns를 어떤 형태로도 참조하지 않는
+  // 중립 문장만. 모델 생성 금지 — 이 배열이 유일한 질문원이다.
+  const GENERIC_RECALL_QUESTIONS = [
+    "오늘 가장 기억에 남는 순간은 뭐였어?",
+    "오늘 누구랑 제일 오래 놀았어?",
+    "오늘 제일 신기했던 것은 뭐였어?",
+    "오늘 제일 크게 웃었던 순간은 언제였어?",
+    "오늘 밖에서 본 것 중에 제일 기억에 남는 건 뭐였어?",
+    "오늘 새로 알게 된 것이 있다면 뭐였어?"
+  ];
+
+  // 로컬 날짜 기반 결정론 회전 — 같은 날이면 어느 화면에서든 같은 질문.
+  function genericRecallQuestion(now) {
+    const d = now || new Date();
+    const dayIndex = d.getFullYear() * 1000 + d.getMonth() * 31 + d.getDate();
+    return GENERIC_RECALL_QUESTIONS[dayIndex % GENERIC_RECALL_QUESTIONS.length];
+  }
+
+  // 제한 화면 사진 영역: 세션 이미지가 있을 때만 원본 사진을 보인다. 스타일화 버튼은
+  // 아예 존재하지 않는다 (스타일화도 합성 호출이다). 샘플은 기존 no-photo 플레이스홀더.
+  function renderRestrictedPhotoArea(area) {
+    area.textContent = "";
+    if (record.mode === "sample") {
+      area.appendChild(makePhotoPlaceholder("Sample day — no photo"));
+      return;
+    }
+    if (photoUrl) {
+      const img = document.createElement("img");
+      img.className = "photo-thumb";
+      img.alt = "오늘의 사진 (세션 전용 — 저장되지 않음)";
+      img.src = photoUrl; // 세션 객체 URL — 절대 저장되지 않는다
+      area.appendChild(img);
+    }
+  }
+
+  function enterPreviewRestricted() {
+    renderPreviewRestricted();
+    showScreen("screen-preview-restricted");
+  }
+
+  function renderPreviewRestricted() {
+    $("preview-restricted-mode").textContent = T.outputMode(record);
+    renderRestrictedPhotoArea($("preview-restricted-photo-area"));
+    $("preview-restricted-question").textContent = genericRecallQuestion();
+  }
+
+  function enterBedtimeRestricted() {
+    renderBedtimeRestricted();
+    showScreen("screen-bedtime-restricted");
+  }
+
+  function renderBedtimeRestricted() {
+    $("bedtime-restricted-mode").textContent = T.outputMode(record);
+    renderRestrictedPhotoArea($("bedtime-restricted-image-area"));
+    $("bedtime-restricted-question").textContent = genericRecallQuestion();
+    renderTestimonyList($("testimony-list-restricted"));
   }
 
   // ---------------------------------------------------------------
@@ -715,8 +782,12 @@
   // ---------------------------------------------------------------
 
   function enterPreview() {
-    // 진입 조건 (S4 B1): Gate 1이 완료되지 않았거나 확정 사실이 0개면 조용히 반환한다.
-    if (!T.gate1Complete(record) || T.synthesisFacts(record).length === 0) return;
+    // 진입 분기 (S8): CONFIRMED_BRIEF만 기존 프리뷰로 — 그 외(미완료·전부 거절)는
+    // 제한 화면으로. 제한 모드에서는 합성 호출이 절대 나가지 않는다.
+    if (T.outputMode(record) !== "CONFIRMED_BRIEF") {
+      enterPreviewRestricted();
+      return;
+    }
     previewError = "";
     const confirmed = T.synthesisFacts(record);
     premiseSelection = record.questionCard ? record.questionCard.premiseFactIds.slice() : [];
@@ -1072,6 +1143,12 @@
   // ---------------------------------------------------------------
 
   function enterBedtime() {
+    // 진입 분기 (S8): 제한 모드의 밤에도 대화는 일어난다 — 사진 + 일반 질문 + 증언만
+    // (페이지 문장 없음). 증언 저장은 기존 경로(record.testimony) 그대로다.
+    if (T.outputMode(record) !== "CONFIRMED_BRIEF") {
+      enterBedtimeRestricted();
+      return;
+    }
     pageError = "";
     const confirmed = T.synthesisFacts(record);
     renderBedtimeScreen();
@@ -1333,20 +1410,34 @@
 
   // 증언 — {text, at}로 testimony에 추가 (S4a 직렬화 사용).
   // 증언은 합성 입력에 절대 들어가지 않는다 (이 파일 어디에도 testimony를 payload에 넣지 않는다).
-  function saveTestimony() {
-    const input = $("testimony-input");
-    const text = input.value.trim();
-    if (text === "") return;
+  function appendTestimony(text) {
     record = Object.assign({}, record, {
       testimony: record.testimony.concat([{ text: text, at: Date.now() }])
     });
     persist();
+  }
+
+  function saveTestimony() {
+    const input = $("testimony-input");
+    const text = input.value.trim();
+    if (text === "") return;
+    appendTestimony(text);
     input.value = "";
     renderBedtimeScreen();
   }
 
-  function renderTestimonyList() {
-    const list = $("testimony-list");
+  // 제한 취침 화면 (S8) — 저장 경로는 기존과 동일하다 (같은 record.testimony).
+  function saveTestimonyRestricted() {
+    const input = $("testimony-input-restricted");
+    const text = input.value.trim();
+    if (text === "") return;
+    appendTestimony(text);
+    input.value = "";
+    renderTestimonyList($("testimony-list-restricted"));
+  }
+
+  function renderTestimonyList(listEl) {
+    const list = listEl || $("testimony-list");
     list.textContent = "";
     for (const entry of record.testimony) {
       const item = document.createElement("div");
@@ -1572,6 +1663,21 @@
     $("save-testimony-btn").addEventListener("click", saveTestimony);
     $("testimony-input").addEventListener("keydown", function (e) {
       if (e.key === "Enter") saveTestimony();
+    });
+
+    // 제한 모드 (S8) — 제한 프리뷰/취침 화면 컨트롤
+    $("open-bedtime-restricted-btn").addEventListener("click", enterBedtimeRestricted);
+    $("back-to-confirmed-from-restricted-btn").addEventListener("click", function () {
+      renderConfirmedScreen();
+      showScreen("screen-confirmed");
+    });
+    $("back-to-preview-from-restricted-btn").addEventListener("click", function () {
+      renderPreviewRestricted();
+      showScreen("screen-preview-restricted");
+    });
+    $("save-testimony-btn-restricted").addEventListener("click", saveTestimonyRestricted);
+    $("testimony-input-restricted").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") saveTestimonyRestricted();
     });
   }
 
