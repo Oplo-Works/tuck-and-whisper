@@ -654,6 +654,65 @@ test("STORAGE_KEY는 브리프의 taw-day-v1이다", () => {
 });
 
 // ---------------------------------------------------------------------
+console.log("S7-fix: NFC leak check (A2) + burned IDs (A3)");
+// ---------------------------------------------------------------------
+
+test("checkLeaks: NFD로 온 문장의 금지 어휘도 NFC 정규화로 잡는다 (A2)", () => {
+  const nfd = "기뻐".normalize("NFD");
+  const result = checkLeaks(
+    [{ text: "아이가 " + nfd + " 뛰어 다닌다", factIds: ["F1"] }],
+    { F1: "아이가 뛰어 다닌다" }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.violations[0].reason, "원문에 없는 표현이 들어갔다: 기뻐");
+});
+
+test("checkLeaks: NFD로 온 인용 원문에 있던 어휘는 통과다 (A2)", () => {
+  const result = checkLeaks(
+    [{ text: "아이가 기뻐 뛰어 다닌다", factIds: ["F1"] }],
+    { F1: "아이가 " + "기뻐".normalize("NFD") + " 뛰어 다닌다" }
+  );
+  assert.equal(result.ok, true);
+});
+
+test("normalizeSpark: 소진된 ID는 자동 발급이 회피한다 (A3)", () => {
+  const result = normalizeSpark({
+    candidates: [
+      { text: "첫 후보", source: "photo", grade: "C" },
+      { text: "둘째 후보", source: "memo", grade: "B" }
+    ]
+  }, new Set(["F1", "F2"]));
+  assert.deepEqual(result.candidates.map((c) => c.id), ["F3", "F4"]);
+  assert.deepEqual(result.debug, []);
+});
+
+test("normalizeSpark: 명시 ID가 소진 집합에 있으면 그 후보는 새 ID로 재발급된다 (A3)", () => {
+  const result = normalizeSpark({
+    candidates: [
+      { id: "F1", text: "구 세대 ID를 달고 온 후보", source: "photo", grade: "C" },
+      { text: "ID 없는 후보", source: "memo", grade: "C" }
+    ]
+  }, ["F1"]);
+  const ids = result.candidates.map((c) => c.id);
+  assert.equal(ids.length, 2);
+  assert.ok(ids.indexOf("F1") === -1); // 구 세대 ID는 최종 레코드에 없다
+  assert.equal(new Set(ids).size, 2);  // 발급된 ID는 전부 유일하다
+  assert.deepEqual(result.debug, []);  // 후보는 격리되지 않고 보존된다
+});
+
+test("normalizeSpark: 소진 집합이 비면 기존 발급(F1…)과 동일하다 (A3 하위호환)", () => {
+  const result = normalizeSpark(SPARK_TWO, []);
+  assert.deepEqual(result.candidates.map((c) => c.id), ["F1", "F2"]);
+});
+
+test("applyExtraction은 소진 ID를 정규화까지 전달한다 (A3 — 앱의 실제 적용 경로)", () => {
+  const base = Object.assign(createDayRecord(), { memoText: "메모" });
+  const token = beginExtraction(base);
+  const out = applyExtraction(base, token, SPARK_TWO, new Set(["F1", "F2"]));
+  assert.deepEqual(out.candidates.map((c) => c.id), ["F3", "F4"]);
+});
+
+// ---------------------------------------------------------------------
 console.log("");
 console.log(passed + " passed, " + failures.length + " failed");
 if (failures.length > 0) {

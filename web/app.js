@@ -91,6 +91,7 @@
   let styleImageUrl = null;         // 스타일화 결과 — 세션 표시 전용 (레코드에 넣지 않는다)
   let styleError = "";              // 스타일화 오류 — 세션 전용
   let styleRawSnippet = "";         // 스타일화 실패 원문 스니펫 — 세션 전용
+  let burnedFactIds = new Set();    // 무효화로 소진된 구 세대 후보 ID — 재추출이 재사용하지 않게 (S7-fix A3)
 
   function $(id) { return document.getElementById(id); }
 
@@ -170,6 +171,9 @@
   // 새 레코드 객체로 교체되믴 진행 중 토큰도 함께 무효가 된다 (늦은 응답은 버려진다).
   function invalidateForChangedInput(message) {
     if (record.candidates.length > 0 || record.unknowns.length > 0) {
+      for (const c of record.candidates) {
+        if (c && typeof c.id === "string") burnedFactIds.add(c.id); // 소진 ID 등록 (S7-fix A3)
+      }
       record = Object.assign(T.invalidateExtraction(record), { memoText: $("memo-input").value });
       lastDebugText = "";
       $("capture-notice").textContent = message;
@@ -312,8 +316,8 @@
       // 늦은 응답 가드: 입력이 바뀌어 record가 교체됐으면(발급 토큰이 무효화됐으면) 조용히 버린다.
       if (record !== token.record) return;
 
-      record = T.applyExtraction(record, token, raw);
-      const debug = T.normalizeSpark(raw).debug; // 형식 깨진 항목 — 디버그 영역용
+      record = T.applyExtraction(record, token, raw, burnedFactIds);
+      const debug = T.normalizeSpark(raw, burnedFactIds).debug; // 형식 깨진 항목 — 디버그 영역용 (적용과 같은 소진 집합)
       lastDebugText = debug.length > 0 ? JSON.stringify(debug, null, 2) : "";
       persist();
       if (record.candidates.length === 0) {
@@ -798,6 +802,19 @@
     return wrap;
   }
 
+  // 교정 피드백 (S7-fix A1): 위반 종류 + 문장 위치만 담는다 — 거절된 문장 전문·사실 전문·
+  // 후보 유래 문자열(ID 등)은 어떤 재시도 페이로드에도 실리지 않는다. 종류는 reason의
+  // 상세부(": 뒤")를 떼어낸 것 — ID·원문 인용이 상세부에 숨어 있기 때문이다.
+  function correctionNoteFromViolations(violations) {
+    return (Array.isArray(violations) ? violations : []).map(function (v) {
+      const kind = v && typeof v.reason === "string" && v.reason !== ""
+        ? v.reason.split(":")[0]
+        : "위반";
+      const position = v && typeof v.index === "number" ? v.index + 1 : "?";
+      return "- 문장 " + position + ": " + kind;
+    }).join("\n");
+  }
+
   // 브리핑 합성 — 추출과 동일한 패턴: 시작 시점 레코드를 기억하고(토큰), 응답 적용 전에 비교한다.
   // validateComposition 위반 시 1회만 위반 내용을 프롬프트에 넣어 재합성, 재실패 시 폴백.
   async function synthesizeBriefingWithRetry() {
@@ -821,7 +838,8 @@
             // 모델이 깨진 JSON을 줬다 — 같은 루프에서 1회 교정을 시도한다.
             parseFailed = true;
             previewRawSnippet = err.rawSnippet;
-            correctionNote = "이전 답안은 깨진 JSON이었다 (원문 일부: " + err.rawSnippet.slice(0, 160) + "). 설명 없이 JSON만 출력하라.";
+            // A1: 스니펫은 이전 답안 원문이라 재시도 페이로드에 실리지 않는다 (디버그 표시 전용).
+            correctionNote = "이전 답안은 깨진 JSON이었다. 설명 없이 JSON만 출력하라.";
             lines = null;
           } else {
             throw err; // 네트워크/HTTP 오류 — 배너로 (재시도는 수동)
@@ -830,9 +848,7 @@
         if (!parseFailed) {
           const check = T.validateComposition(lines, confirmed.map(function (f) { return f.id; }));
           if (check.ok) break;
-          correctionNote = check.violations.map(function (v) {
-            return "- 문장 " + (v.index + 1) + " (" + v.text + "): " + v.reason;
-          }).join("\n");
+          correctionNote = correctionNoteFromViolations(check.violations);
           lines = null;
         }
       }
@@ -1199,7 +1215,8 @@
           if (err && err.rawSnippet) {
             parseFailed = true;
             pageRawSnippet = err.rawSnippet;
-            correctionNote = "이전 답안은 깨진 JSON이었다 (원문 일부: " + err.rawSnippet.slice(0, 160) + "). 설명 없이 JSON만 출력하라.";
+            // A1: 스니펫은 이전 답안 원문이라 재시도 페이로드에 실리지 않는다 (디버그 표시 전용).
+            correctionNote = "이전 답안은 깨진 JSON이었다. 설명 없이 JSON만 출력하라.";
             sentences = null;
           } else {
             throw err; // 네트워크/HTTP 오류 — 배너로
@@ -1210,9 +1227,7 @@
           const leaks = T.checkLeaks(sentences, factsById);
           const all = composition.violations.concat(leaks.violations);
           if (all.length === 0) break;
-          correctionNote = all.map(function (v) {
-            return "- 문장 " + (v.index + 1) + " (" + v.text + "): " + v.reason;
-          }).join("\n");
+          correctionNote = correctionNoteFromViolations(all);
           sentences = null;
         }
       }
@@ -1411,6 +1426,7 @@
 
   function startNewDay() {
     record = T.createDayRecord(); // 이전 레코드와 병합 없음
+    burnedFactIds = new Set(); // 새 하루 교체 전이 — 구 세대 소진 집합도 비운다 (S7-fix A3)
     if (photoUrl) {
       URL.revokeObjectURL(photoUrl);
       photoUrl = null;
@@ -1462,6 +1478,7 @@
     });
     const token = T.beginExtraction(base);
     record = T.applyExtraction(base, token, SAMPLE_DAY); // 샘플도 라이브와 같은 정규화 경로
+    burnedFactIds = new Set(); // 샘플 교체 전이 — 소진 집합 초기화 (S7-fix A3)
     if (photoUrl) {
       URL.revokeObjectURL(photoUrl);
       photoUrl = null;

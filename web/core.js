@@ -83,9 +83,18 @@
   //   debug 배열로 분리해 반환한다 (원형 entry 와 이유를 함께 담는다).
   //
   // 반환: { candidates, unknowns, debug } — DayRecord 에 넣기 전 단계의 조각.
-  function normalizeSpark(raw) {
+  //
+  // burnedFactIds (선택, S7-fix A3): 정정 무효화로 소진된 구 세대 후보 ID (Set 또는
+  // 문자열 배열). 자동 발급은 이 집합을 절대 재사용하지 않고, 명시 ID가 이 집합에
+  // 있으면 그 후보는 격리하지 않고 새 ID로 재발급한다 (S1a 제외 집합 패턴).
+  function normalizeSpark(raw, burnedFactIds) {
     const result = { candidates: [], unknowns: [], debug: [] };
     if (!raw || typeof raw !== "object") return result;
+    const burned = burnedFactIds instanceof Set
+      ? burnedFactIds
+      : Array.isArray(burnedFactIds)
+        ? new Set(burnedFactIds.filter(function (id) { return typeof id === "string"; }))
+        : new Set();
 
     const rawCandidates = Array.isArray(raw.candidates) ? raw.candidates : [];
     const rawUnknowns = Array.isArray(raw.unknowns) ? raw.unknowns : [];
@@ -127,6 +136,17 @@
           result.debug.push({ kind: "candidate", reason: "ID가 중복됨", entry: entry });
           continue;
         }
+        if (burned.has(entry.id)) {
+          // 소진된 구 세대 ID — 후보는 살리고 새 ID로 재발급한다 (S7-fix A3).
+          acceptedCandidates.push({
+            id: null, // 2차에서 소진 집합을 피해 자동 발급
+            text: entry.text,
+            source: entry.source,
+            grade: entry.grade,
+            decision: "undecided"
+          });
+          continue;
+        }
         claimedFactIds.add(entry.id);
         acceptedCandidates.push({
           id: entry.id,
@@ -153,7 +173,7 @@
         do {
           factSeq += 1;
           c.id = "F" + factSeq;
-        } while (explicitFactIds.has(c.id) || claimedFactIds.has(c.id));
+        } while (explicitFactIds.has(c.id) || claimedFactIds.has(c.id) || burned.has(c.id));
         claimedFactIds.add(c.id);
       }
       result.candidates.push(c);
@@ -300,8 +320,12 @@
         if (typeof fact === "string") originalTexts += fact + "\n";
         else if (fact && typeof fact === "object" && typeof fact.text === "string") originalTexts += fact.text + "\n";
       }
+      // NFC 정규화 후 매칭한다 (S7-fix A2) — NFD로 온 문장·원문도 같은 글자로 닿게.
+      const nfcSentence = sentence.text.normalize("NFC");
+      const nfcOriginals = originalTexts.normalize("NFC");
       const leaked = LEAK_WORDS.filter(function (word) {
-        return sentence.text.indexOf(word) !== -1 && originalTexts.indexOf(word) === -1;
+        const nfcWord = word.normalize("NFC");
+        return nfcSentence.indexOf(nfcWord) !== -1 && nfcOriginals.indexOf(nfcWord) === -1;
       });
       if (leaked.length > 0) {
         violations.push({
@@ -533,7 +557,8 @@
   // 그 외에는 입력 record 를 그대로 돌려준다 (아무 일도 일어나지 않았다).
   // raw 는 candidates 배열이 있는 파싱된 객체여야 한다 — 구조가 깨진 raw 로
   // 기존 상태를 빈 상태로 덮는 사고를 막는다 (정상적인 빈 결과는 적용된다).
-  function applyExtraction(record, token, raw) {
+  // burnedFactIds 는 normalizeSpark 에 그대로 전달된다 (S7-fix A3 — 소진된 구 세대 ID 회피).
+  function applyExtraction(record, token, raw, burnedFactIds) {
     const applicable =
       record &&
       typeof record === "object" &&
@@ -546,7 +571,7 @@
       Array.isArray(raw.candidates);
     if (!applicable) return record;
 
-    const normalized = normalizeSpark(raw);
+    const normalized = normalizeSpark(raw, burnedFactIds);
     return withDerivedState(
       Object.assign({}, record, {
         candidates: normalized.candidates,

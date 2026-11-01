@@ -1443,8 +1443,8 @@ async function main() {
   const coreMatch = coreOut.match(/(\d+) passed, (\d+) failed/);
   const corePassed = coreMatch ? Number(coreMatch[1]) : -1;
   const coreFailed = coreMatch ? Number(coreMatch[2]) : -1;
-  const coreOk = coreRun.status === 0 && corePassed === 38 && coreFailed === 0;
-  log("[회귀] " + (coreOk ? "PASS" : "FAIL") + " — core 테스트 38개");
+  const coreOk = coreRun.status === 0 && corePassed === 44 && coreFailed === 0; // S7-fix: 기존 38 + A2/A3 회귀 6
+  log("[회귀] " + (coreOk ? "PASS" : "FAIL") + " — core 테스트 44개");
   log("  " + (coreMatch ? coreMatch[0] : "결과 파싱 실패") +
     " (exit " + coreRun.status + ")");
   if (!coreOk) {
@@ -1465,7 +1465,7 @@ async function main() {
   const allOk = check1Ok && check2Ok && check3Ok && coreOk && fixtureOk;
   log("RESULT: " + (allOk ? "PASS" : "FAIL") +
     " — 검사 " + [check1Ok, check2Ok, check3Ok].filter(Boolean).length + "/3 PASS" +
-    ", core " + (coreOk ? "38/38" : "FAIL") +
+    ", core " + (coreOk ? "44/44" : "FAIL") +
     ", fixture " + (fixtureOk ? "unchanged" : "CHANGED") +
     ", live layer " + (live1 && live2 ? "included" : "incomplete"));
   process.exit(allOk ? 0 : 1);
