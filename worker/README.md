@@ -5,6 +5,7 @@
 3. Worker → Settings → Variables and Secrets:
    - Add **Secret** `META_API_KEY` = your Meta Model API key.
    - Add **Variable** `META_API_BASE` = the API base URL shown in dev.meta.ai → Documentation (same base your Codex setup uses).
+   - (Optional) To open the PWA from your own domain, add **Variable** `ALLOWED_ORIGINS` = that hostname (comma-separated list) — otherwise API calls from it are rejected.
 4. Open `https://<your-worker>.workers.dev/api/health` → `{ "ok": true }`.
 5. Point the PWA's API base at the Worker URL.
 
