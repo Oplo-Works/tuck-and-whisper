@@ -171,6 +171,10 @@
   let styleError = "";              // 스타일화 오류 — 세션 전용
   let styleRawSnippet = "";         // 스타일화 실패 원문 스니펫 — 세션 전용
   let burnedFactIds = new Set();    // 무효화로 소진된 구 세대 후보 ID — 재추출이 재사용하지 않게 (S7-fix A3)
+  // 무효화 epoch (DS-1 P0-1): 입력 변경·결정 변경·새 하루·샘플 전환처럼 세션 자체를
+  // 무효화하는 사건에서만 증가한다. 증언 저장·합성 적용 같은 독립 작업의 정상적인
+  // record 교체는 epoch를 건드리지 않으므로 서로의 결과를 폐기하지 않는다.
+  let invalidationEpoch = 0;
 
   function $(id) { return document.getElementById(id); }
 
@@ -246,9 +250,24 @@
     btn.disabled = running;
   }
 
-  // 무효화 규칙: 추출 결과가 있는 상태에서 사진/메모가 바뀌면 전부 비운다.
-  // 새 레코드 객체로 교체되믴 진행 중 토큰도 함께 무효가 된다 (늦은 응답은 버려진다).
+  function invalidatePendingWork() {
+    invalidationEpoch += 1;
+    // 무효화된 요청을 기다리지 않고 새 입력으로 재시도할 수 있다.
+    // 각 요청의 finally도 epoch를 확인해 새 작업의 실행 상태를 건드리지 않는다.
+    extracting = false;
+    synthesizing = false;
+    questionDrafting = false;
+    pageSynthesizing = false;
+    stylizing = false;
+    setExtractRunning(false);
+    updateExtractButton();
+  }
+
+  // 무효화 규칙: 사진/메모가 바뀌면 무효화 epoch를 올려 진행 중 작업을 전부 폐기하고,
+  // 추출 결과가 있으면 비운다. 후보가 0개여도 레코드는 새 객체로 교체한다 —
+  // 진행 중 추출의 토큰(record 결합)도 함께 무효가 되어야 하기 때문이다 (DS-1 P0-2b).
   function invalidateForChangedInput(message) {
+    invalidatePendingWork();
     if (record.candidates.length > 0 || record.unknowns.length > 0) {
       for (const c of record.candidates) {
         if (c && typeof c.id === "string") burnedFactIds.add(c.id); // 소진 ID 등록 (S7-fix A3)
@@ -258,18 +277,15 @@
       $("capture-notice").textContent = message;
       $("capture-notice").hidden = false;
       $("back-to-gate1-btn").hidden = true;
-      persist();
+    } else {
+      // 후보가 없어도 새 record 객체로 교체해 진행 중 추출 토큰을 무효화한다.
+      record = Object.assign({}, record, { memoText: $("memo-input").value });
     }
+    persist();
   }
 
   function onMemoInput() {
-    if (record.candidates.length > 0 || record.unknowns.length > 0) {
-      invalidateForChangedInput(t("capture.invalidatedMemo"));
-    } else {
-      // 후보가 없어도 메모 텍스트는 새 record 객체로 반영된다 — 진행 중 토큰의 레코드와 달라진다.
-      record = Object.assign({}, record, { memoText: $("memo-input").value });
-      persist();
-    }
+    invalidateForChangedInput(t("capture.invalidatedMemo"));
     updateExtractButton();
   }
 
@@ -284,6 +300,15 @@
     if (photoFile) {
       photoUrl = URL.createObjectURL(photoFile); // 세션 전용 썸네일용 — 저장 금지
     }
+    // 구 사진의 파생 세션 상태를 전부 폐기한다 (DS-1 P0-2a) — 새 사진의 취침 페이지에
+    // 이전 스타일화 그림/오류가 남지 않게 한다. data URL도 새 추출 전까지 비운다.
+    if (photoDataUrl) photoDataUrl = null;
+    if (styleImageUrl) {
+      URL.revokeObjectURL(styleImageUrl);
+      styleImageUrl = null;
+    }
+    styleError = "";
+    styleRawSnippet = "";
     invalidateForChangedInput(t("capture.invalidatedPhoto"));
     renderCaptureScreen();
   }
@@ -356,9 +381,12 @@
     setExtractRunning(true);
 
     const token = T.beginExtraction(record); // 시작 시 현재 레코드에 토큰 발급
+    const epoch = invalidationEpoch; // 무효화 사건 감지용 — 독립 작업의 record 교체는 무시한다
     let rawText = "";
     try {
       const dataUrl = await preparePhoto(photoFile);
+      // 사진 처리 중 사진이 교체됐으면 구 사진의 data URL을 세션에 남기지 않는다.
+      if (invalidationEpoch !== epoch) return;
       photoDataUrl = dataUrl; // 세션 전용 보관 — 스타일화에서 재사용, 저장은 절대 안 한다
       const response = await fetch(WORKER_URL + "/api/spark", {
         method: "POST",
@@ -392,10 +420,11 @@
     }
     const raw = parseSparkContent(content);
 
-      // 늦은 응답 가드: 입력이 바뀌어 record가 교체됐으면(발급 토큰이 무효화됐으면) 조용히 버린다.
-      if (record !== token.record) return;
-
-      record = T.applyExtraction(record, token, raw, burnedFactIds);
+      // 늦은 응답 가드: 무효화 사건(입력/결정/새 하루/샘플 전환)이 있었으면 조용히 버린다.
+      // 독립 작업이 레코드를 교체했을 뿐이면(같은 epoch) 현재 레코드 위에 적용한다.
+      if (invalidationEpoch !== epoch) return;
+      const applyToken = record === token.record ? token : T.beginExtraction(record);
+      record = T.applyExtraction(record, applyToken, raw, burnedFactIds);
       const debug = T.normalizeSpark(raw, burnedFactIds).debug; // 형식 깨진 항목 — 디버그 영역용 (적용과 같은 소진 집합)
       lastDebugText = debug.length > 0 ? JSON.stringify(debug, null, 2) : "";
       persist();
@@ -408,15 +437,17 @@
       showScreen("screen-gate1");
     } catch (err) {
       // 실패 계약: 오류 배너 + 입력(사진·메모) 유지 + 재시도 가능.
-      if (record !== token.record) return; // 이미 무효화된 세션 — 늦은 실패는 소음이 된다
+      if (invalidationEpoch !== epoch) return; // 이미 무효화된 세션 — 늦은 실패는 소음이 된다
       showCaptureError(
         t("capture.extractFailed", { message: err && err.message ? err.message : t("error.unknown") }),
         rawText
       );
     } finally {
-      extracting = false;
-      setExtractRunning(false);
-      updateExtractButton();
+      if (invalidationEpoch === epoch) {
+        extracting = false;
+        setExtractRunning(false);
+        updateExtractButton();
+      }
     }
   }
 
@@ -736,7 +767,11 @@
   }
 
   function applyDecision(candidateId, decision) {
-    record = T.setDecision(record, candidateId, decision); // 유일한 전이 경로
+    const current = record.candidates.find(function (c) { return c.id === candidateId; });
+    if (current && current.decision === decision) return;
+    const next = T.setDecision(record, candidateId, decision); // 유일한 전이 경로
+    invalidatePendingWork(); // 결정 변경은 진행 중 작업을 전부 폐기하는 무효화 사건
+    record = next;
     persist();
     renderGate1Screen();
   }
@@ -747,9 +782,13 @@
     const targets = record.candidates.filter(function (c) {
       return c.grade === "C" && c.decision === "undecided";
     });
+    if (targets.length === 0) return;
+    let next = record;
     for (const c of targets) {
-      record = T.setDecision(record, c.id, "confirmed");
+      next = T.setDecision(next, c.id, "confirmed");
     }
+    invalidatePendingWork(); // 결정 변경 — 진행 중 작업 전부 폐기
+    record = next;
     persist();
     renderGate1Screen();
   }
@@ -850,7 +889,29 @@
   // 합성 입력은 TawCore.synthesisFacts(record)로만 만든다 (candidates 직접 읽기 금지).
   // ---------------------------------------------------------------
 
+  // 질문 카드 진입 가드 (DS-1 P1-2): 전제는 현재 확정 집합의 부분집합이어야 하고
+  // unknownId는 현재 unknowns에 있어야 한다. 하나라도 어긋나면 카드를 버린다.
+  function questionCardUsable(card, confirmedIds) {
+    if (!card || typeof card !== "object") return false;
+    if (typeof card.unknownId !== "string" || card.unknownId === "") return false;
+    if (!record.unknowns.some(function (u) { return u.id === card.unknownId; })) return false;
+    if (!Array.isArray(card.premiseFactIds)) return false;
+    return card.premiseFactIds.every(function (id) {
+      return typeof id === "string" && confirmedIds.has(id);
+    });
+  }
+
+  function dropUnusableQuestionCard(confirmedIds) {
+    if (record.questionCard && !questionCardUsable(record.questionCard, confirmedIds)) {
+      record = Object.assign({}, record, { questionCard: null });
+      persist();
+    }
+  }
+
   function enterPreview() {
+    const confirmed = T.synthesisFacts(record);
+    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
+    dropUnusableQuestionCard(confirmedIds); // 제한 모드로 진입해도 저장 카드의 유효성을 검사한다.
     // 진입 분기 (S8): CONFIRMED_BRIEF만 기존 프리뷰로 — 그 외(미완료·전부 거절)는
     // 제한 화면으로. 제한 모드에서는 합성 호출이 절대 나가지 않는다.
     if (T.outputMode(record) !== "CONFIRMED_BRIEF") {
@@ -858,10 +919,10 @@
       return;
     }
     previewError = "";
-    const confirmed = T.synthesisFacts(record);
-    premiseSelection = record.questionCard ? record.questionCard.premiseFactIds.slice() : [];
-    selectedUnknownId = record.questionCard
-      ? record.questionCard.unknownId
+    const card = record.questionCard;
+    premiseSelection = card ? card.premiseFactIds.slice() : [];
+    selectedUnknownId = card
+      ? card.unknownId
       : (record.unknowns.length > 0 ? record.unknowns[record.unknowns.length - 1].id : "");
     renderPreviewScreen();
     showScreen("screen-preview");
@@ -869,7 +930,6 @@
 
     // 진입 가드: 저장된 briefing의 factIds가 현재 확정 집합의 부분집합이 아니면
     // 버리고 재합성 상태로 진입한다 (패킷 B1).
-    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
     const briefingUsable = record.briefing && record.briefing.length > 0 &&
       record.briefing.every(function (line) {
         return Array.isArray(line.factIds) && line.factIds.length > 0 &&
@@ -956,7 +1016,7 @@
     }).join("\n");
   }
 
-  // 브리핑 합성 — 추출과 동일한 패턴: 시작 시점 레코드를 기억하고(토큰), 응답 적용 전에 비교한다.
+  // 브리핑 합성 — 무효화 epoch를 기억하고 응답 적용 전에 비교한다.
   // validateComposition 위반 시 1회만 위반 내용을 프롬프트에 넣어 재합성, 재실패 시 폴백.
   async function synthesizeBriefingWithRetry() {
     if (synthesizing) return;
@@ -965,16 +1025,17 @@
     synthesizing = true;
     previewError = "";
     renderPreviewScreen();
-    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 추출과 같은 가드
+    const epoch = invalidationEpoch; // 무효화 사건에만 폐기된다 (독립 작업은 서로를 버리지 않는다)
     try {
       let correctionNote = null;
       let lines = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        if (record !== token.record) return; // 세션이 바뀌었다 — 조용히 중단
+        if (invalidationEpoch !== epoch) return; // 세션이 무효화됐다 — 조용히 중단
         let parseFailed = false;
         try {
           lines = await requestBriefingLines(confirmed, correctionNote);
         } catch (err) {
+          if (invalidationEpoch !== epoch) return;
           if (err && err.rawSnippet) {
             // 모델이 깨진 JSON을 줬다 — 같은 루프에서 1회 교정을 시도한다.
             parseFailed = true;
@@ -993,7 +1054,7 @@
           lines = null;
         }
       }
-      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (invalidationEpoch !== epoch) return; // 늦은 응답 — 조용히 버린다
       if (lines) {
         applyBriefing(lines, false);
       } else {
@@ -1003,12 +1064,14 @@
         }), true);
       }
     } catch (err) {
-      if (record !== token.record) return;
+      if (invalidationEpoch !== epoch) return;
       previewError = t("preview.briefingFailed", { message: err && err.message ? err.message : t("error.unknown") });
       previewRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
-      synthesizing = false;
-      renderPreviewScreen();
+      if (invalidationEpoch === epoch) {
+        synthesizing = false;
+        renderPreviewScreen();
+      }
     }
   }
 
@@ -1157,7 +1220,7 @@
     questionDrafting = true;
     previewError = "";
     renderPreviewScreen();
-    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 늦은 응답 가드
+    const epoch = invalidationEpoch; // 무효화 사건에만 폐기 — 브리핑과 독립
     try {
       const response = await fetch(WORKER_URL + "/api/spark", {
         method: "POST",
@@ -1193,17 +1256,20 @@
       if (!raw || typeof raw !== "object" || typeof raw.text !== "string" || raw.text.trim() === "") {
         throw new Error(t("error.badShapeText"));
       }
-      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (invalidationEpoch !== epoch) return; // 늦은 응답 — 조용히 버린다
       record = Object.assign({}, record, {
-        questionCard: { text: raw.text, unknownId: unknown.id, premiseFactIds: premiseSelection.slice() }
+        // 저장은 요청에 실제로 실린 필터링된 전제만 — premiseSelection 원본 복사 금지 (DS-1 P1-2)
+        questionCard: { text: raw.text, unknownId: unknown.id, premiseFactIds: premises.map(function (f) { return f.id; }) }
       });
       persist();
     } catch (err) {
-      if (record !== token.record) return;
+      if (invalidationEpoch !== epoch) return;
       previewError = t("question.draftFailed", { message: err && err.message ? err.message : t("error.unknown") });
     } finally {
-      questionDrafting = false;
-      renderPreviewScreen();
+      if (invalidationEpoch === epoch) {
+        questionDrafting = false;
+        renderPreviewScreen();
+      }
     }
   }
 
@@ -1213,6 +1279,9 @@
   // ---------------------------------------------------------------
 
   function enterBedtime() {
+    const confirmed = T.synthesisFacts(record);
+    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
+    dropUnusableQuestionCard(confirmedIds); // 제한 모드도 같은 카드 진입 가드를 쓴다 (DS-1 P1-2)
     // 진입 분기 (S8): 제한 모드의 밤에도 대화는 일어난다 — 사진 + 일반 질문 + 증언만
     // (페이지 문장 없음). 증언 저장은 기존 경로(record.testimony) 그대로다.
     if (T.outputMode(record) !== "CONFIRMED_BRIEF") {
@@ -1220,22 +1289,23 @@
       return;
     }
     pageError = "";
-    const confirmed = T.synthesisFacts(record);
-    renderBedtimeScreen();
-    showScreen("screen-bedtime");
-    if (confirmed.length === 0) return;
-    // 진입 가드: 저장된 pageSentences의 factIds가 현재 확정 집합의 부분집합이 아니면
-    // 버리고 재합성 상태로 진입한다 (프리뷰 가드와 동일).
-    const confirmedIds = new Set(confirmed.map(function (f) { return f.id; }));
-    const usable = record.pageSentences && record.pageSentences.length > 0 &&
-      record.pageSentences.every(function (s) {
-        return Array.isArray(s.factIds) && s.factIds.length > 0 &&
-          s.factIds.every(function (id) { return confirmedIds.has(id); });
-      });
+    // 진입 가드: pageSentences의 factIds가 현재 확정 집합의 부분집합이 아니거나
+    // LEAK 검사를 통과하지 못하면 버리고 재합성 상태로 진입한다 (프리뷰 가드와 동일).
+    const factsById = {};
+    for (const f of confirmed) factsById[f.id] = f;
+    const composition = T.validateComposition(record.pageSentences, confirmed.map(function (f) { return f.id; }));
+    const leaks = T.checkLeaks(record.pageSentences, factsById);
+    const usable = Array.isArray(record.pageSentences) && record.pageSentences.length > 0 &&
+      composition.ok && leaks.ok;
     if (!usable) {
       record = Object.assign({}, record, { pageSentences: [] });
       pageFallbackNotice = false;
       persist();
+    }
+    // 저장된 문장도 검증을 마친 뒤에만 화면에 쓴다.
+    renderBedtimeScreen();
+    showScreen("screen-bedtime");
+    if (!usable) {
       synthesizePageWithRetry();
     }
   }
@@ -1349,18 +1419,19 @@
     pageError = "";
     pageRawSnippet = "";
     renderBedtimeScreen();
-    const token = T.beginExtraction(record); // 레코드 결합 토큰 — 늦은 응답 가드
+    const epoch = invalidationEpoch; // 무효화 사건에만 폐기 — 스타일화와 독립
     try {
       const factsById = {};
       for (const f of confirmed) factsById[f.id] = f;
       let correctionNote = null;
       let sentences = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        if (record !== token.record) return; // 세션이 바뀌었다 — 조용히 중단
+        if (invalidationEpoch !== epoch) return; // 세션이 무효화됐다 — 조용히 중단
         let parseFailed = false;
         try {
           sentences = await requestPageSentences(confirmed, correctionNote);
         } catch (err) {
+          if (invalidationEpoch !== epoch) return;
           if (err && err.rawSnippet) {
             parseFailed = true;
             pageRawSnippet = err.rawSnippet;
@@ -1380,7 +1451,7 @@
           sentences = null;
         }
       }
-      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (invalidationEpoch !== epoch) return; // 늦은 응답 — 조용히 버린다
       if (sentences) {
         applyPageSentences(sentences, false);
       } else {
@@ -1390,12 +1461,14 @@
         }), true);
       }
     } catch (err) {
-      if (record !== token.record) return;
+      if (invalidationEpoch !== epoch) return;
       pageError = t("page.composeFailed", { message: err && err.message ? err.message : t("error.unknown") });
       pageRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
-      pageSynthesizing = false;
-      renderBedtimeScreen();
+      if (invalidationEpoch === epoch) {
+        pageSynthesizing = false;
+        renderBedtimeScreen();
+      }
     }
   }
 
@@ -1534,7 +1607,7 @@
     styleError = "";
     styleRawSnippet = "";
     renderBedtimeScreen();
-    const token = T.beginExtraction(record);
+    const epoch = invalidationEpoch; // 무효화 사건(사진 교체 포함)에만 폐기 — 페이지 합성과 독립
     try {
       // /api/image JSON 계약 (Worker 에러 메시지로 확인): prompt 필수 + images 배열
       // (항목에 image_url 또는 file_id). messages 필드는 이미지 편집에서 지원하지 않는다.
@@ -1565,7 +1638,7 @@
         err.rawSnippet = rawText.slice(0, 400);
         throw err;
       }
-      if (record !== token.record) return; // 늦은 응답 — 조용히 버린다
+      if (invalidationEpoch !== epoch) return; // 늦은 응답 — 조용히 버린다
       if (styleImageUrl) {
         URL.revokeObjectURL(styleImageUrl);
         styleImageUrl = null;
@@ -1574,12 +1647,14 @@
         ? imageData
         : "data:image/png;base64," + imageData;
     } catch (err) {
-      if (record !== token.record) return;
+      if (invalidationEpoch !== epoch) return;
       styleError = t("style.failed", { message: err && err.message ? err.message : t("error.unknown") });
       styleRawSnippet = err && err.rawSnippet ? err.rawSnippet : "";
     } finally {
-      stylizing = false;
-      renderBedtimeScreen();
+      if (invalidationEpoch === epoch) {
+        stylizing = false;
+        renderBedtimeScreen();
+      }
     }
   }
 
@@ -1588,6 +1663,7 @@
   // ---------------------------------------------------------------
 
   function startNewDay() {
+    invalidatePendingWork(); // 새 하루 — 진행 중 작업 전부 폐기
     record = T.createDayRecord(); // 이전 레코드와 병합 없음
     burnedFactIds = new Set(); // 새 하루 교체 전이 — 구 세대 소진 집합도 비운다 (S7-fix A3)
     if (photoUrl) {
@@ -1635,6 +1711,7 @@
   }
 
   function loadSampleDay() {
+    invalidatePendingWork(); // 샘플 전환 — 진행 중 작업 전부 폐기
     const base = Object.assign(T.createDayRecord(), {
       mode: "sample",
       memoText: SAMPLE_DAY.memo.text
