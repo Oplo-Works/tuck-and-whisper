@@ -1,7 +1,6 @@
-// Tuck and Whisper — service worker v10.
-// v10 변경: 언어 선택(i18n.js 포함)이 닿게 CACHE 를 taw-shell-v10 으로 올리고,
-//           i18n.js 를 오프라인 셸 프리캐시에 추가한다. activate 에서 옛 캐시(taw-shell-v9
-//           포함)를 전부 삭제한다.
+// Tuck and Whisper — service worker v11.
+// v11 변경: 23개 언어 테이블 추가(i18n.js 25개 언어 완성)가 닿게 CACHE 를 taw-shell-v11 로
+//           올린다. activate 에서 옛 캐시(taw-shell-v10 포함)를 전부 삭제한다.
 // v9 변경: S8 제한 모드(PHOTO_PROMPT_ONLY 화면)가 닿게 CACHE 를 taw-shell-v9 로 올린다.
 //          activate 에서 옛 캐시(taw-shell-v8 포함)를 전부 삭제한다.
 // v8 변경: S7-fix(교정 피드백 경계·NFC 누출 검사·소진 ID)가 닿게 CACHE 를 taw-shell-v8 로 올린다.
@@ -21,7 +20,7 @@
 // - HTML 문서(페이지 이동 요청)는 network-first: 네트워크에서 먼저 받고, 성공하면 캐시를
 //   갱신하고, 실패할 때만 캐시를 내준다 — index.html 을 고치면 폰에 새 배포가 바로 닿는다.
 // - 그 외 정적 파일은 기존 방식(cache-first)을 유지한다. API(/api/) 트래픽은 절대 캐시하지 않는다.
-const CACHE = 'taw-shell-v10';
+const CACHE = 'taw-shell-v11';
 // index.html 이 이제 외부 core.js/i18n.js/app.js 에 의존하므로 오프라인 셸에 함께 넣는다.
 const SHELL = ['./', './index.html', './core.js', './i18n.js', './app.js', './manifest.json', './icon.svg'];
 
