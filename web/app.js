@@ -701,7 +701,8 @@
       ? ""
       : (complete ? t("gate1.allDecided") : t("gate1.remaining", { n: undecidedCount }));
     const batchBtn = $("batch-confirm-btn");
-    batchBtn.hidden = undecidedC.length === 0;
+    batchBtn.className = undecidedCount > 0 ? "primary" : "";
+    $("goto-confirmed-btn").className = undecidedCount === 0 ? "primary" : "";
     batchBtn.textContent = t("gate1.batchConfirm", { n: undecidedC.length });
     // S8: 확정 목록 화면은 항상 열려 있다 — 프리뷰 경계는 enterPreview 의 분기가 담당한다.
     $("goto-confirmed-btn").disabled = false;
@@ -739,7 +740,9 @@
   // B 카드는 강조 스타일 — 일괄 확정 대상에서 절대 제외다 (batchConfirmC 참조).
   function makeCandidateCard(candidate) {
     const card = document.createElement("div");
-    card.className = "candidate-card" + (candidate.grade === "B" ? " grade-b" : "");
+    card.className = "candidate-card" + (candidate.grade === "B" ? " grade-b" : "") +
+      (candidate.decision === "confirmed" ? " is-confirmed" :
+        candidate.decision === "rejected" ? " is-rejected" : "");
 
     const text = document.createElement("p");
     text.className = "candidate-text";
@@ -750,20 +753,23 @@
     chips.className = "chips";
     chips.appendChild(makeChip(candidate.source, "chip-source"));
     chips.appendChild(makeChip(candidate.grade, candidate.grade === "B" ? "chip-grade-b" : ""));
-    chips.appendChild(makeChip(decisionLabel(candidate.decision),
-      candidate.decision === "confirmed" ? "chip-confirmed" :
-      candidate.decision === "rejected" ? "chip-rejected" : ""));
+    if (candidate.decision === "confirmed" || candidate.decision === "rejected") {
+      chips.appendChild(makeChip(decisionLabel(candidate.decision),
+        candidate.decision === "confirmed" ? "chip-confirmed" : "chip-rejected"));
+    }
     card.appendChild(chips);
 
     const row = document.createElement("div");
     row.className = "card-buttons";
     const confirmBtn = document.createElement("button");
     confirmBtn.textContent = t("decision.confirm");
+    confirmBtn.className = candidate.decision === "confirmed" ? "primary" : "";
     confirmBtn.addEventListener("click", function () {
       applyDecision(candidate.id, "confirmed");
     });
     const rejectBtn = document.createElement("button");
     rejectBtn.textContent = t("decision.reject");
+    rejectBtn.className = candidate.decision === "rejected" ? "primary" : "";
     rejectBtn.addEventListener("click", function () {
       applyDecision(candidate.id, "rejected");
     });
