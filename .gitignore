@@ -2,3 +2,6 @@ local-media/
 docs/
 spike-results/
 src/
+node_modules/
+test-results/
+playwright-report/

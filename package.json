@@ -1,0 +1,5 @@
+{
+  "name": "tuck-and-whisper", "private": true,
+  "scripts": {"test": "node tests/core.test.mjs && node --test tests/workflow.test.mjs tests/storage.test.mjs tests/cache.test.mjs tests/mutations.test.mjs && playwright test", "test:browser": "playwright test"},
+  "devDependencies": {"@playwright/test": "^1.56.1", "fake-indexeddb": "^6.2.4"}
+}

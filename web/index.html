@@ -70,215 +70,49 @@
   .confirm-card p{margin:0 0 12px;font-size:15px}
   .recall-question{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;font-size:16px}
   header select{display:block;width:auto;margin:8px auto 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px}
-</style>
-</head>
-<body>
-<header>
-  <div class="moon">🌙</div>
-  <h1>Tuck and Whisper</h1>
-  <p>You missed the moment. You don't have to miss the story.</p>
-  <select id="lang-select" aria-label="Language"></select>
-</header>
+
+  [hidden]{display:none!important} button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--accent2);outline-offset:3px}
+  nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px} nav button{flex:1}
+  .story p{font-size:20px;line-height:1.9}.art{width:100%;max-height:65vh;object-fit:contain;border-radius:14px}
+  details{margin:12px 0}summary{cursor:pointer;padding:8px}.use{display:flex;gap:8px;align-items:center;color:var(--text)}
+  .use input{width:20px;height:20px}.candidate-card.is-confirmed{opacity:1}.source{font-size:12px;color:var(--dim)}
+  #message{white-space:pre-wrap}pre{white-space:pre-wrap;overflow-wrap:anywhere}.toolbar{display:flex;flex-wrap:wrap;gap:8px}
+</style></head><body>
+<header><div class="moon">🌙</div><h1>Tuck and Whisper</h1><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></header>
 <main>
-
-  <!-- 화면 1: Capture -->
-  <section id="screen-capture">
-    <div class="card">
-      <h2 data-i18n="capture.title">오늘의 하루</h2>
-      <p class="hint" data-i18n="capture.hint">사진 한 장과 짧은 메모. 사진은 저장되지 않는다.</p>
-      <label for="photo-input" data-i18n="capture.photoLabel">사진 (갤러리에서 선택)</label>
-      <input type="file" id="photo-input" accept="image/*">
-      <div id="photo-status" class="hint"></div>
-      <label for="memo-input" data-i18n="capture.memoLabel">메모</label>
-      <textarea id="memo-input" rows="4" data-i18n-ph="capture.memoPlaceholder" placeholder="예: 한국 할아버지 집에서, 태어난 지 한 달 된 강아지 들이랑 밭길에서 놀았어."></textarea>
-      <label for="voice-input" data-i18n="capture.voiceLabel">음성 메모 (녹음 파일 — m4a 그대로 선택해도 된다)</label>
-      <input type="file" id="voice-input" accept="audio/*,.m4a">
-      <div>
-        <button id="transcribe-btn" disabled data-i18n="capture.transcribe">음성으로 메모 채우기</button>
-      </div>
-      <div id="voice-status" class="hint"></div>
-      <div>
-        <button id="extract-btn" disabled data-i18n="capture.extract">추출</button>
-        <button id="load-sample-btn" class="primary" data-i18n="capture.loadSample">Load sample day</button>
-      </div>
-      <p class="hint" data-i18n="capture.needBoth">사진과 메모가 모두 있어야 추출할 수 있다.</p>
-      <div id="capture-notice" class="notice" hidden></div>
-      <div id="capture-error" class="error" hidden></div>
-      <details id="debug-details" class="debug" hidden>
-        <summary data-i18n="debug.summary">디버그 (개발자용)</summary>
-        <pre id="debug-raw"></pre>
-      </details>
-      <div>
-        <button id="back-to-gate1-btn" hidden data-i18n="capture.backToGate1">← Gate 1 (검토 계속)</button>
-        <button id="new-day-capture-btn" data-i18n="newDay.button">새 하루 시작</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 화면 2: Gate 1 (사실 확인) -->
-  <section id="screen-gate1" hidden>
-    <div class="card">
-      <h2 data-i18n="gate1.title">사실 확인 (Gate 1)</h2>
-      <span class="chip" id="gate1-mode"></span>
-      <div id="gate1-photo-area"></div>
-      <div id="gate1-memo" class="memo-readonly"></div>
-      <p id="gate1-status" class="hint"></p>
-      <div>
-        <button id="batch-confirm-btn"></button>
-        <button id="goto-confirmed-btn" data-i18n="gate1.gotoConfirmed">확정 목록 보기</button>
-        <button id="edit-memo-btn" data-i18n="gate1.editMemo">메모 수정</button>
-        <button id="new-day-gate1-btn" data-i18n="newDay.button">새 하루 시작</button>
-      </div>
-      <details id="gate1-debug" class="debug" hidden>
-        <summary data-i18n="debug.malformed">디버그: 형식 깨진 항목 (개발자용)</summary>
-        <pre id="gate1-debug-body"></pre>
-      </details>
-    </div>
-    <div id="unknown-section" class="card">
-      <h2 data-i18n="gate1.notKnown">Not known yet</h2>
-      <ul id="unknown-list" style="margin:0;padding-left:18px;color:var(--dim);font-size:14px"></ul>
-    </div>
-    <div id="candidate-list"></div>
-    <div id="gate1-empty" class="notice" hidden data-i18n="gate1.empty">후보가 없다 — 추출 결과가 없거나 메모 변경으로 무효화되었다.</div>
-  </section>
-
-  <!-- 화면 3: 확정 목록 -->
-  <section id="screen-confirmed" hidden>
-    <div class="card">
-      <h2 data-i18n="confirmed.title">확정 목록</h2>
-      <p class="hint" data-i18n="confirmed.hint">여기는 확정한 사실만 보인다 — 거절·미결정은 닿지 않는다.</p>
-      <div id="confirmed-count" class="count"></div>
-      <ol id="confirmed-list"></ol>
-      <div id="confirmed-empty" class="notice" hidden data-i18n="confirmed.empty">확정된 사실이 아직 없다.</div>
-      <div class="sticky-actions">
-        <button id="back-to-gate1-from-confirmed-btn" data-i18n="confirmed.back">← Gate 1</button>
-        <button id="open-preview-btn" class="primary" data-i18n="confirmed.makePreview">프리뷰 만들기</button>
-        <button id="new-day-confirmed-btn" data-i18n="newDay.button">새 하루 시작</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 화면 4: 프리뷰 (브리핑 + 질문 카드) -->
-  <section id="screen-preview" hidden>
-    <div class="card">
-      <h2 data-i18n="preview.title">취침 전 프리뷰</h2>
-      <span class="chip" id="preview-mode"></span>
-      <div id="preview-no-facts" class="notice" hidden data-i18n="preview.noFacts">합성할 사실이 없다 — 모든 후보를 거절했다.</div>
-      <div id="preview-main">
-        <div id="preview-fallback-notice" class="notice" hidden data-i18n="preview.fallback">오늘은 꾸밈없이, 확정한 사실 그대로예요</div>
-        <p id="preview-synth-status" class="hint"></p>
-        <div id="preview-error" class="error" hidden></div>
-        <details id="preview-debug" class="debug" hidden>
-          <summary data-i18n="debug.raw">디버그: 모델 원문 (개발자용)</summary>
-          <pre id="preview-debug-body"></pre>
-        </details>
-        <h3 data-i18n="preview.briefing">브리핑</h3>
-        <div id="briefing-lines"></div>
-        <p id="briefing-empty-hint" class="hint" hidden data-i18n="preview.briefingEmpty">아직 브리핑이 없다.</p>
-        <button id="resynthesize-btn" data-i18n="preview.resynthesize">다시 합성</button>
-        <h3 data-i18n="preview.questionCard">질문 카드</h3>
-        <label for="question-unknown" data-i18n="preview.unknownLabel">물어볼 unknown</label>
-        <select id="question-unknown"></select>
-        <details id="premise-details">
-          <summary data-i18n="preview.premiseLabel">전제가 될 확정 사실 (안 골라도 된다 — 탭으로 고른다)</summary>
-          <div id="premise-chips" class="chips"></div>
-        </details>
-        <button id="draft-btn" data-i18n="preview.draft">질문 초안 만들기</button>
-        <textarea id="question-text" rows="2" readonly data-i18n-ph="preview.questionPlaceholder" placeholder="초안을 만들면 여기서 수정할 수 있다"></textarea>
-        <p id="question-card-meta" class="hint"></p>
-        <div class="sticky-actions">
-          <button id="open-bedtime-btn" class="primary" data-i18n="preview.openBedtime">취침 페이지</button>
-        </div>
-      </div>
-      <div>
-        <button id="back-to-confirmed-btn" data-i18n="preview.back">← 확정 목록</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 화면 5: 취침 페이지 (문장·스타일화·증언) -->
-  <section id="screen-bedtime" hidden>
-    <div class="card">
-      <h2 data-i18n="bedtime.title">취침 페이지</h2>
-      <span class="chip" id="bedtime-mode"></span>
-      <div id="bedtime-no-facts" class="notice" hidden data-i18n="preview.noFacts">합성할 사실이 없다 — 모든 후보를 거절했다.</div>
-      <div id="bedtime-main">
-        <div id="bedtime-image-area"></div>
-        <div id="bedtime-fallback-notice" class="notice" hidden data-i18n="preview.fallback">오늘은 꾸밈없이, 확정한 사실 그대로예요</div>
-        <p id="bedtime-synth-status" class="hint"></p>
-        <div id="bedtime-error" class="error" hidden></div>
-        <details id="bedtime-debug" class="debug" hidden>
-          <summary data-i18n="debug.raw">디버그: 모델 원문 (개발자용)</summary>
-          <pre id="bedtime-debug-body"></pre>
-        </details>
-        <h3 data-i18n="bedtime.story">오늘 이야기</h3>
-        <div id="page-sentences"></div>
-        <p id="page-empty-hint" class="hint" hidden data-i18n="bedtime.pageEmpty">아직 페이지 문장이 없다.</p>
-        <h3 data-i18n="bedtime.questionCard">질문 카드</h3>
-        <div id="bedtime-question"></div>
-        <button id="recompose-btn" data-i18n="bedtime.recompose">다시 합성</button>
-        <h3 data-i18n="bedtime.testimony">증언</h3>
-        <p class="hint" data-i18n="bedtime.testimonyHint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
-        <input type="text" id="testimony-input" data-i18n-ph="bedtime.testimonyPlaceholder" placeholder="아이의 대답 한 마디">
-        <button id="save-testimony-btn" data-i18n="bedtime.save">기록</button>
-        <div id="testimony-list"></div>
-      </div>
-      <div>
-        <button id="back-to-preview-btn" data-i18n="bedtime.back">← 프리뷰</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 화면 6: 프리뷰 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
-  <section id="screen-preview-restricted" hidden>
-    <div class="card">
-      <h2 data-i18n="preview.title">취침 전 프리뷰</h2>
-      <span class="chip" id="preview-restricted-mode"></span>
-      <div id="preview-restricted-photo-area"></div>
-      <div class="notice" data-i18n="restricted.banner">오늘은 사진과 질문이 먼저 도착했어요</div>
-      <p class="recall-question" id="preview-restricted-question"></p>
-      <div>
-        <button id="open-bedtime-restricted-btn" class="primary" data-i18n="preview.openBedtime">취침 페이지</button>
-        <button id="back-to-confirmed-from-restricted-btn" data-i18n="preview.back">← 확정 목록</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 화면 7: 취침 페이지 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
-  <section id="screen-bedtime-restricted" hidden>
-    <div class="card">
-      <h2 data-i18n="bedtime.title">취침 페이지</h2>
-      <span class="chip" id="bedtime-restricted-mode"></span>
-      <div id="bedtime-restricted-image-area"></div>
-      <div class="notice" data-i18n="restricted.banner">오늘은 사진과 질문이 먼저 도착했어요</div>
-      <h3 data-i18n="restricted.question">질문</h3>
-      <p class="recall-question" id="bedtime-restricted-question"></p>
-      <h3 data-i18n="bedtime.testimony">증언</h3>
-      <p class="hint" data-i18n="bedtime.testimonyHint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
-      <input type="text" id="testimony-input-restricted" data-i18n-ph="bedtime.testimonyPlaceholder" placeholder="아이의 대답 한 마디">
-      <button id="save-testimony-btn-restricted" data-i18n="bedtime.save">기록</button>
-      <div id="testimony-list-restricted"></div>
-      <div>
-        <button id="back-to-preview-from-restricted-btn" data-i18n="bedtime.back">← 프리뷰</button>
-      </div>
-    </div>
-  </section>
-
-</main>
-
-<!-- 새 하루 확인 모달 -->
-<div id="new-day-confirm-overlay" class="confirm-overlay" hidden>
-  <div class="confirm-card">
-    <p data-i18n="newDay.confirmText">지금 하루의 후보와 결정이 지워져요. 새 하루를 시작할까요?</p>
-    <div>
-      <button id="new-day-confirm-start-btn" class="primary" data-i18n="newDay.start">시작</button>
-      <button id="new-day-confirm-cancel-btn" data-i18n="newDay.cancel">취소</button>
-    </div>
-  </div>
-</div>
-<footer>build: ui-polish (shell v15)</footer>
-<script src="core.js"></script>
-<script src="i18n.js"></script>
-<script src="app.js"></script>
-</body>
-</html>
+<p id="language-note" class="hint" hidden data-copy="translation"></p>
+<div id="storage-warning" class="error" role="alert" hidden><p id="storage-text"></p><button id="download-draft" data-copy="downloadDraft"></button><button id="reload-record" data-copy="reload"></button></div>
+<p id="save-status" class="hint" aria-live="polite"></p><p id="message" role="status" aria-live="polite" class="notice" hidden></p>
+<nav aria-label="Steps"><button id="nav-capture" data-copy="capture"></button><button id="nav-review" data-copy="review"></button><button id="nav-preview" data-copy="preview"></button></nav>
+<section id="screen-capture"><div class="card"><h2 tabindex="-1" data-copy="capture"></h2>
+<label for="memo-input" data-copy="memo"></label><textarea id="memo-input" rows="6"></textarea>
+<label for="photo-input" data-copy="photo"></label><input type="file" id="photo-input" accept="image/*"><p id="photo-status" class="hint"></p>
+<p class="hint" data-copy="inputPrivacy"></p><p class="hint" data-copy="retention"></p>
+<button id="extract-btn" class="primary" data-copy="extract"></button><button id="load-sample-btn" data-copy="sample"></button>
+<details><summary data-copy="voice"></summary><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button></details>
+<button id="new-day-btn" data-copy="newDay"></button><button id="library-btn" data-copy="library" hidden></button>
+</div></section>
+<section id="screen-review" hidden><div class="card"><h2 tabindex="-1" data-copy="review"></h2><p data-copy="skipped" class="hint"></p><p id="selection-count"></p>
+<div id="memo-candidates"></div><details id="photo-details"><summary data-copy="photoGroup"></summary><div id="photo-preview"></div><div id="photo-candidates"></div></details>
+<details id="identity-details"><summary data-copy="identity"></summary><p class="hint" data-copy="noImage"></p>
+<label for="identity-people" data-copy="people"></label><select id="identity-people"></select>
+<label for="identity-animals" data-copy="animals"></label><select id="identity-animals"></select></details>
+<div class="sticky-actions"><button id="prepare-btn" class="primary" data-copy="prepare"></button><button id="edit-input" data-copy="edit"></button></div></div></section>
+<section id="screen-preview" hidden><div class="card"><h2 tabindex="-1" data-copy="preview"></h2><p id="restricted-notice" class="notice" data-copy="noMemo" hidden></p>
+<div id="briefing"></div><p id="briefing-status" aria-live="polite"></p><button id="briefing-retry" data-copy="regenerate"></button>
+<h3 data-copy="question"></h3><textarea id="question-text" rows="4" aria-label="Question"></textarea><p id="question-meta" class="hint"></p><button id="another-question" data-copy="another"></button>
+<p class="hint" data-copy="retention"></p><button id="open-bedtime" class="primary" data-copy="read"></button>
+<details class="audit"><summary data-copy="audit"></summary><div id="preview-audit"></div></details></div></section>
+<section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><div id="reading-art"></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
+<h3 data-copy="question"></h3><p id="reading-question" class="recall-question"></p><p class="hint" data-copy="testimonyHint"></p>
+<details><summary data-copy="parentTools"></summary><button id="story-retry" data-copy="regenerate"></button><button id="style-btn" data-copy="style"></button>
+<p id="art-message" class="hint" data-copy="noImage"></p><div id="art-preview"></div><div id="art-approval" hidden><p data-copy="artworkReview"></p><button id="accept-art" data-copy="acceptArt"></button><button id="reject-art" data-copy="rejectArt"></button></div></details>
+<details class="audit"><summary data-copy="audit"></summary><div id="bedtime-audit"></div></details>
+<label for="testimony-input" data-copy="testimony"></label><input type="text" id="testimony-input"><button id="save-testimony" data-copy="saveWords"></button><div id="testimony-list"></div>
+<div id="book-tools" hidden><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook"></button><button id="export-book" data-copy="export"></button></div>
+</div></section>
+<section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><button id="delete-all" data-copy="deleteAll"></button></div></section>
+<dialog id="book-dialog"><form method="dialog"><button data-copy="back"></button></form><p id="book-note"></p><div id="book-content"></div><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
+</main><footer>build: reviewed-workflow (shell v16)</footer>
+<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="api.js"></script><script src="app.js"></script>
+</body></html>
