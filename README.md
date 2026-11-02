@@ -57,12 +57,22 @@ Unconfirmed facts cannot reach the child. This guarantee is enforced in determin
 
 ## Counterfactual harness
 
-The confirmation boundary is not a prompt-time promise — it is re-verified on every build by a counterfactual harness (`node tests/harness.mjs`), built to be falsifiable: if the boundary were broken, the harness would FAIL. It drives the app with adversarial inputs — an extraction response reusing an old fact ID, NFD-normalized leak bypasses, sentences citing the rejected fact — and judges every served sentence and every synthesis request body against an independent oracle derived from the fixture, never from the app's own validator. On the current build:
+The confirmation boundary is not a prompt-time promise — it is re-verified on every build by a counterfactual harness (`node tests/harness.mjs`), built to be falsifiable: if the boundary were broken, the harness would FAIL. It drives the app with adversarial inputs — an extraction response reusing an old fact ID, NFD-normalized leak bypasses, sentences citing the rejected fact — and judges every served sentence and every synthesis request body against an independent oracle derived from the fixture, never from the app's own validator. On the current build (`e65659e`):
+
+- Core tests: 48/48 PASS
+- DS-1 concurrency regression: 68/68 PASS
+- Harness v2: 3/3 PASS, live Worker requests 4, cumulative violations 0
+- Fixture SHA-256: `bd22e9c1…` (unchanged)
+- Shell: `taw-shell-v15`, footer `build: ui-polish (shell v15)`
+
+The same harness run also confirms:
 
 - sentences citing unconfirmed facts: 0
 - rejected text in model requests: 0
 
-Scope notes: the harness checks the deterministic layer plus the render output it collects into the app's own containers; real-browser rendering is covered separately by device playback and E2E. The app keeps a single current record, so version-history preservation is not claimed anywhere.
+Scope notes: The harness verifies structural citation integrity and the model-request boundary. It does not claim semantic entailment. It checks the deterministic layer plus the render output it collects into the app's own containers; real-browser rendering is covered separately by device playback and E2E. The app keeps a single current record, so version-history preservation is not claimed anywhere.
+
+Builder-reported manual/browser checks (not re-runnable from this commit alone): 54 browser UI checks at 320/390/1280px PASS; v14 cache removal and offline loading PASS. These are builder reports, not independently re-run from the repository at this commit.
 
 ## Models & Measured Costs
 
