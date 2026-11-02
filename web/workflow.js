@@ -13,7 +13,7 @@
       identity: { people: 'unconfirmed', animals: 'unconfirmed' },
       briefing: null, story: null, question: null, testimony: [], history: [], legacy: null };
   }
-  function used(r) { return r.candidates.filter(c => c.decision === 'confirmed' && c.included).map(copy); }
+  function used(r) { return r.candidates.filter(c => c.decision === 'confirmed' && c.included && c.grounded).map(copy); }
   function canPrepare(r) { return used(r).some(c => c.source === 'memo'); }
   function prepared(r) { return canPrepare(r) && r.selectedRevision === r.contentRevision; }
   function imageAllowed(r) { return prepared(r) && Object.values(r.identity).every(x => x === 'same' || x === 'absent'); }
@@ -29,7 +29,7 @@
   }
   function extract(r, raw) {
     const normalized = Legacy.normalizeSpark(raw);
-    const candidates = normalized.candidates.map((c, index) => {
+    let candidates = normalized.candidates.map((c, index) => {
       const original = (raw.candidates || []).find(x => x.text === c.text && x.source === c.source) || {};
       const quote = typeof original.quote === 'string' ? original.quote.trim() : '';
       // Memo candidates are exact source excerpts, not unverified paraphrases.
@@ -40,6 +40,22 @@
     });
     candidates.sort((a, b) => a.source !== b.source ? (a.source === 'memo' ? -1 : 1) :
       a.source === 'memo' && a.grounded && b.grounded ? r.memoText.indexOf(a.quote) - r.memoText.indexOf(b.quote) : a.order - b.order);
+    // Known dependent openings are not independent review choices. Join only
+    // adjacent exact source spans; never manufacture a new linking sentence.
+    const grouped = [];
+    for (const c of candidates) {
+      const previous = grouped.at(-1);
+      if (previous?.source === 'memo' && previous.grounded && c.source === 'memo' && c.grounded &&
+          /^(왜냐하면|그중|그 중|그래서|하지만|그 때문에|because\b|therefore\b|that's why\b|but\b)/i.test(c.quote)) {
+        const start = r.memoText.indexOf(previous.quote), next = r.memoText.indexOf(c.quote);
+        if (next >= start + previous.quote.length && !r.memoText.slice(start + previous.quote.length, next).trim()) {
+          previous.quote = r.memoText.slice(start, next + c.quote.length); previous.text = previous.quote;
+          previous.proposal += '\n' + c.proposal; continue;
+        }
+      }
+      grouped.push(c);
+    }
+    candidates = grouped;
     return changed(r, { candidates, unknowns: normalized.unknowns }, 'extract', null, candidates.map(c => c.id));
   }
   function decide(r, id, decision) {
@@ -53,7 +69,7 @@
   }
   function include(r, id, value) {
     const c = r.candidates.find(x => x.id === id);
-    if (!c || c.decision !== 'confirmed' || typeof value !== 'boolean') throw Error('Not confirmed');
+    if (!c || c.decision !== 'confirmed' || (value && !c.grounded) || typeof value !== 'boolean') throw Error('Not confirmed with source');
     if (c.included === value) return r;
     return changed(r, { candidates: r.candidates.map(x => x.id === id ? Object.assign({}, x, { included: value }) : x) },
       'inclusion', { id, included: c.included }, { id, included: value });

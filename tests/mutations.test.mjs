@@ -9,7 +9,7 @@ function build(text) {
   vm.runInNewContext(text, context); return context.module.exports;
 }
 function inclusionOracle(W) {
-  const r = W.create(); r.candidates = [{ id: 'F1', text: 'USE', decision: 'confirmed', included: true }, { id: 'F2', text: 'DO_NOT_USE', decision: 'confirmed', included: false }];
+  const r = W.create(); r.candidates = [{ id: 'F1', text: 'USE', decision: 'confirmed', included: true, grounded: true }, { id: 'F2', text: 'DO_NOT_USE', decision: 'confirmed', included: false, grounded: true }];
   return JSON.stringify(W.used(r).map(c => c.id)) === '["F1"]';
 }
 function epochOracle(W) { const jobs = W.jobs(), old = jobs.begin('story'); jobs.invalidate(); return jobs.current(old) === false; }

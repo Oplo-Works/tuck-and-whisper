@@ -54,7 +54,7 @@
     const no = node('button', t('reject'), c.decision === 'rejected' ? 'primary' : ''); no.onclick = () => change(W.decide(record, c.id, 'rejected'));
     box.append(yes, no);
     if (c.decision === 'confirmed') {
-      const label = node('label', undefined, 'use'), check = node('input'); check.type = 'checkbox'; check.checked = c.included;
+      const label = node('label', undefined, 'use'), check = node('input'); check.type = 'checkbox'; check.checked = c.included; check.disabled = !c.grounded;
       check.onchange = () => { const id = c.id; change(W.include(record, id, check.checked)); document.querySelector('[data-fact-id="' + id + '"] input')?.focus(); };
       label.append(check, node('span', t('include'))); box.append(label);
     }
@@ -230,8 +230,15 @@
     // Extension boundary for local books. No service credentials or mutable globals exposed.
     if (window.TawBooksUI) window.TawBooksUI.init({ getRecord: () => record, getDB: () => db, getArt: () => W.imageAllowed(record) ? acceptedArt : null,
       getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download,
-      reset: async () => { await queue; if (blocked) throw Error('Unsaved changes'); const next = W.create();
-        storageVersion = await S.save(db, next, storageVersion, true); localStorage.removeItem('taw-day-v1'); invalidate(); clearPhoto(); record = next; $('memo-input').value = ''; show('capture'); } });
+      reset: async () => {
+        if (blocked) throw Error('Unsaved changes'); blocked = true;
+        try {
+          await queue; const next = W.create();
+          storageVersion = await S.save(db, next, storageVersion, true);
+          invalidate(); clearPhoto(); record = next; $('memo-input').value = '';
+          localStorage.removeItem('taw-day-v1'); show('capture');
+        } finally { blocked = false; render(); }
+      } });
   }
   init().catch(fail);
 })();

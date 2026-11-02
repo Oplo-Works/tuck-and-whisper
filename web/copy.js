@@ -46,6 +46,7 @@
     'migrate-v1': ['이전 기록 가져오기', 'Previous record imported'],
     library: ['보관한 이야기', 'Saved stories'], saveBook: ['이 기기에 완성본 보관', 'Save this book on this device'],
     bookSaved: ['그림과 함께 이 기기에 보관했어요.', 'Saved on this device with its available illustration.'],
+    bookSavedText: ['이 기기에 글 완성본을 보관했어요. 그림은 포함되지 않았어요.', 'Saved the text on this device. No illustration was included.'],
     bookPolicy: ['선택한 완성본과 그림은 삭제할 때까지 보관해요. 브라우저 데이터 정리로 사라질 수 있어요. 다른 기기로 자동 전달되지는 않아요.', 'Saved books remain until deleted, but browser data cleanup may remove them. They do not sync to other devices.'],
     deleteBook: ['이 보관본 삭제', 'Delete this saved book'], deleteAll: ['모든 로컬 기록 삭제', 'Delete all local records'],
     deleteConfirm: ['이 브라우저의 현재 기록과 모든 보관본을 삭제할까요?', 'Delete the current record and all saved books in this browser?'],

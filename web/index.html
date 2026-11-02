@@ -77,6 +77,7 @@
   details{margin:12px 0}summary{cursor:pointer;padding:8px}.use{display:flex;gap:8px;align-items:center;color:var(--text)}
   .use input{width:20px;height:20px}.candidate-card.is-confirmed{opacity:1}.source{font-size:12px;color:var(--dim)}
   #message{white-space:pre-wrap}pre{white-space:pre-wrap;overflow-wrap:anywhere}.toolbar{display:flex;flex-wrap:wrap;gap:8px}
+  dialog{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:16px;max-width:640px;width:calc(100% - 32px);max-height:90vh;padding:20px}dialog::backdrop{background:#000a}
 </style></head><body>
 <header><div class="moon">🌙</div><h1>Tuck and Whisper</h1><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></header>
 <main>
@@ -113,6 +114,6 @@
 </div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><button id="delete-all" data-copy="deleteAll"></button></div></section>
 <dialog id="book-dialog"><form method="dialog"><button data-copy="back"></button></form><p id="book-note"></p><div id="book-content"></div><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
-</main><footer>build: reviewed-workflow (shell v16)</footer>
-<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="api.js"></script><script src="app.js"></script>
+</main><footer>build: saved-reading (shell v17)</footer>
+<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="books.js"></script><script src="books-ui.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="api.js"></script><script src="app.js"></script>
 </body></html>

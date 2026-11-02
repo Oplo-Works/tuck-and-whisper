@@ -27,6 +27,11 @@ test('source quotes override invented model paraphrases; source order wins', () 
     { text: '먼저 왔다.', quote: '먼저 왔다.', source: 'memo', grade: 'C' }] });
   assert.deepEqual(r.candidates.map(c => c.text), ['먼저 왔다.', '나중에 갔다.']);
 });
+test('a separate causal fragment cannot be selected without its adjacent source passage', () => {
+  const text = '이름은 들이야. 왜냐하면 들판에서 만났기 때문이야.';
+  const r = W.extract(W.input(W.create(), text), { candidates: ['이름은 들이야.', '왜냐하면 들판에서 만났기 때문이야.'].map(quote => ({ text: quote, quote, source: 'memo', grade: 'B' })) });
+  assert.equal(r.candidates.length, 1); assert.equal(r.candidates[0].text, text); assert.equal(r.candidates[0].quote, text);
+});
 test('selector cannot add facts, causal links, reorder or delete story passages', () => {
   const r = ready(), ids = W.used(r).map(c => c.id);
   assert.throws(() => W.compose(r, 'story', ['unknown'], false));
@@ -59,6 +64,10 @@ test('migration preserves decisions and old results but never implies a new use 
   const before = JSON.stringify(old), r = W.migrate(old);
   assert.equal(r.candidates[0].included, false); assert.equal(r.candidates[0].decision, 'confirmed'); assert.equal(W.prepared(r), false);
   assert.equal(r.testimony[0].text, '답'); assert.equal(JSON.stringify(old), before); assert.equal(r.history[0].action, 'migrate-v1');
+});
+test('a legacy confirmed paraphrase without a literal memo source cannot be re-included', () => {
+  const r = W.migrate({ mode: 'live', memoText: '좋아했어요.', candidates: [{ id: 'F1', text: '좋아해서 이름을 지었다.', source: 'memo', grade: 'B', decision: 'confirmed' }], unknowns: [] });
+  assert.throws(() => W.include(r, 'F1', true)); assert.deepEqual(W.used(r), []);
 });
 test('stored stale or tampered outputs are discarded and forbidden inclusion rejected', () => {
   const r = ready(); r.story = { revision: r.contentRevision, lines: [{ text: '새 원인', factIds: [r.candidates[0].id] }] };
