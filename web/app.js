@@ -209,7 +209,8 @@
     if (screen === 'library') next = 'nextLibrary';
     if (blocked) next = conflicted ? 'conflict' : corrupted ? 'corrupt' : 'unsaved';
     $('next-action').textContent = t(next);
-    $('extract-btn').disabled = !!running.extract || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
+    $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
+    $('voice-progress').hidden = !running.voice;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
     $('nav-review').disabled = !record.candidates.length;
     $('selection-count').textContent = t('selected', { n: W.used(record).length });
@@ -218,6 +219,7 @@
       for (const c of record.candidates) $(c.source === 'memo' ? 'memo-candidates' : 'photo-candidates').append(candidate(c));
       $('photo-preview').replaceChildren(); if (photoURL) $('photo-preview').append(image(photoURL));
       $('identity-details').hidden = !photoFile;
+      $('identity-hint').hidden = !photoFile;
       for (const k of ['people', 'animals']) $('identity-' + k).value = record.identity[k];
     }
     const ready = W.prepared(record);

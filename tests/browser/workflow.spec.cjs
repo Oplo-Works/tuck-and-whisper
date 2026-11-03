@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
 const memo = '아이가 강아지를 좋아했어요. 들판에서 만나 들이라고 이름 지었어요. 엄마가 들이는 들이 엄마와 지내고 싶어 할 거라고 말했어요.';
 const passages = memo.split(/(?<=\.) /);
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGNomLAAiBggFAAuzgbBPIwuuwAAAABJRU5ErkJggg==';
@@ -42,6 +43,161 @@ async function stored(page) {
     const open = indexedDB.open('taw-v2'); open.onsuccess = () => { const db = open.result, tx = db.transaction('current'), r = tx.objectStore('current').get('day'); tx.oncomplete = () => { resolve(r.result.record); db.close(); }; }; open.onerror = () => reject(open.error);
   }));
 }
+
+test('v26 (a,c,g) capture DOM, visual and keyboard order; reset is outside the input card', async ({ page }) => {
+  await boot(page);
+  await page.locator('summary[data-copy=voice]').click();
+  const ids = ['photo-input', 'memo-input', 'voice-input', 'transcribe-btn', 'preparation-notes', 'extract-btn'];
+  const positions = await page.evaluate(ids => ids.map(id => {
+    const el = document.getElementById(id);
+    return { id, top: el.getBoundingClientRect().top, index: [...document.querySelectorAll('*')].indexOf(el) };
+  }), ids);
+  for (let i = 1; i < positions.length; i++) {
+    expect(positions[i].index).toBeGreaterThan(positions[i - 1].index);
+    expect(positions[i].top).toBeGreaterThan(positions[i - 1].top);
+  }
+  await expect(page.locator('#memo-section #memo-input')).toHaveCount(1);
+  await expect(page.locator('#memo-section #voice-input')).toHaveCount(1);
+  await expect(page.locator('#memo-section [data-copy=voiceReplace]')).toBeVisible();
+  await page.locator('summary[data-copy=voice]').click();
+  await expect(page.locator('[data-copy=voiceReplace]')).toBeVisible();
+  await page.locator('#photo-input').focus(); await page.keyboard.press('Tab');
+  await expect(page.locator('#memo-input')).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(page.locator('summary[data-copy=voice]')).toBeFocused();
+  expect(await page.locator('#extract-btn').evaluate(el => el === el.closest('.card').lastElementChild)).toBe(true);
+  expect(await page.locator('#new-day-btn').evaluate(el => el.closest('.card'))).toBeNull();
+  const gap = await page.evaluate(() => document.querySelector('.reset-actions').getBoundingClientRect().top - document.querySelector('#screen-capture .card').getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(24);
+  expect(await page.locator('.reset-actions').evaluate(el => getComputedStyle(el).borderTopStyle)).toBe('solid');
+  await expect(page.locator('#screen-capture img, #screen-capture canvas, [id*=pulse], [class*=pulse]')).toHaveCount(0);
+  await expect(page.locator('#screen-capture input[type=radio], #screen-capture [role=dialog]')).toHaveCount(0);
+  await expect(page.locator('main > section')).toHaveCount(5);
+  // The entire Bedtime subtree is unchanged except for the requested retry label.
+  const old = execFileSync('git', ['show', 'c663673:web/index.html'], { encoding: 'utf8' });
+  const oldBedtime = old.match(/<section id="screen-bedtime"[\s\S]*?<\/section>/)[0].replace('id="story-retry" data-copy="regenerate"', 'id="story-retry" data-copy="remakeStory"');
+  const current = require('node:fs').readFileSync('web/index.html', 'utf8').match(/<section id="screen-bedtime"[\s\S]*?<\/section>/)[0];
+  expect(current.replace(/\r\n/g, '\n')).toBe(oldBedtime.replace(/\r\n/g, '\n'));
+});
+
+for (const lang of ['ko', 'en']) test('v26 (b,c,e,f) clear labels and static guidance: ' + lang, async ({ page }) => {
+  await boot(page); await page.locator('#lang-select').selectOption(lang);
+  const ko = lang === 'ko';
+  await expect(page.locator('#photo-section [data-copy=photoSkip]')).toContainText(ko ? '단락 그림 없이 글 이야기만' : 'Paragraphs stay text-only');
+  await expect(page.locator('[data-copy=captureHint]')).toContainText(ko ? '메모로 글 이야기를 남길 수' : 'save a text story with a memo alone');
+  await expect(page.locator('[data-copy=recordGuide]')).toContainText(ko ? '오늘의 기록 남기기' : "Leave today's record");
+  await expect(page.locator('[data-copy=voiceReplace]')).toContainText(ko ? '덮어씁니다' : 'replace typed memo text');
+  await expect(page.locator('#preparation-notes [data-copy=voiceCheck]')).toContainText(ko ? '글로 바뀐 메모를 확인' : 'check the converted memo');
+  await expect(page.locator('#new-day-btn')).toHaveText(ko ? '현재 기록 지우고 새로 시작' : 'Clear current record and start over');
+  await expect(page.locator('#extract-btn')).toHaveText(ko ? '이야기 준비 시작' : 'Start preparing');
+  await expect(page.locator('#prepare-btn')).toHaveText(ko ? '확인한 내용으로 준비' : 'Prepare selected details');
+  await expect(page.locator('#briefing-retry')).toHaveText(ko ? '브리핑 다시 만들기' : 'Remake briefing');
+  await expect(page.locator('#story-retry')).toHaveText(ko ? '이야기 다시 만들기' : 'Remake story');
+  await page.screenshot({ path: 'test-results/v26-capture-' + lang + '.png', fullPage: true });
+  const dialog = page.waitForEvent('dialog');
+  const click = page.locator('#new-day-btn').click();
+  const confirmation = await dialog;
+  expect(confirmation.message()).toContain(ko ? '초안 메모, 확인 후보·결정, 질문·이야기 초안' : 'draft memo, review candidates and decisions, question and story drafts');
+  expect(confirmation.message()).toContain(ko ? '보관한 이야기는 남습니다' : 'Saved stories will remain');
+  await confirmation.dismiss(); await click;
+});
+
+test('v26 (d) identity instructions name the collapsed control; gate still requires both identities', async ({ page }) => {
+  const requests = await boot(page); await review(page, true);
+  await expect(page.locator('#identity-hint')).toBeVisible();
+  await expect(page.locator('#identity-details')).not.toHaveAttribute('open');
+  expect(await page.locator('#identity-details').evaluate(el => el.previousElementSibling.id)).toBe('identity-hint');
+  await expect(page.locator('#identity-hint')).toContainText('아래 ‘사진을 이야기의 그림으로 쓰려면’을 열어');
+  await page.screenshot({ path: 'test-results/v26-review-ko.png', fullPage: true });
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[0]);
+  await expect(page.locator('#para-art-hint')).toContainText('이 내용이 맞나요? 화면에서 ‘사진을 이야기의 그림으로 쓰려면’을 열어');
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  await page.locator('#lang-select').selectOption('en');
+  await expect(page.locator('#identity-hint')).toContainText('open “Before using this photo as the story illustration” below');
+  await expect(page.locator('#para-art-hint')).toContainText('open “Before using this photo as the story illustration” on the “Does this look right?” review screen');
+  await page.locator('#nav-review').click(); await page.locator('#identity-details summary').click();
+  await page.locator('#identity-people').selectOption('same');
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  await page.locator('#identity-animals').selectOption('absent');
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#para-art-all')).toBeEnabled();
+  expect(requests.filter(r => r.url.endsWith('/api/image'))).toHaveLength(0);
+});
+
+for (const outcome of ['success', 'failure']) test('v26 voice pending warning and preparing disabled, then recovery: ' + outcome, async ({ page }) => {
+  const requests = await boot(page); await page.locator('#memo-input').fill('DUMMY_TYPED_MEMO');
+  await page.locator('summary[data-copy=voice]').click();
+  const wav = Buffer.alloc(44 + 4800); wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(4800, 40);
+  const pending = deferred(), started = deferred();
+  await page.route('**/api/voice', async route => {
+    started.resolve(); await pending.promise;
+    await route.fulfill(outcome === 'success' ? { json: { transcript: 'DUMMY_CONVERTED_MEMO' } } : { status: 500, json: { error: 'mock failure' } });
+  });
+  await page.locator('#voice-input').setInputFiles({ name: 'dummy.wav', mimeType: 'audio/wav', buffer: wav });
+  await page.locator('#transcribe-btn').click(); await started.promise;
+  await expect(page.locator('#voice-progress')).toBeVisible(); await expect(page.locator('#voice-progress')).toContainText('음성을 글로 바꾸는 중');
+  await expect(page.locator('#extract-btn')).toBeDisabled(); await expect(page.locator('#transcribe-btn')).toBeDisabled();
+  await page.locator('#lang-select').selectOption('en');
+  await expect(page.locator('#voice-progress')).toContainText('Converting audio to text');
+  expect(requests).toHaveLength(0);
+  pending.resolve();
+  await expect(page.locator('#memo-input')).toHaveValue(outcome === 'success' ? 'DUMMY_CONVERTED_MEMO' : 'DUMMY_TYPED_MEMO');
+  await expect(page.locator('#extract-btn')).toBeEnabled(); await expect(page.locator('#transcribe-btn')).toBeEnabled();
+  await expect(page.locator('#voice-progress')).toBeHidden();
+  if (outcome === 'failure') await expect(page.locator('#message')).toContainText('Could not finish');
+});
+
+test('v26 (b,e,h) no-photo text book survives reset and reload; cancel preserves current draft', async ({ page }) => {
+  const requests = await boot(page); await reading(page);
+  await expect(page.locator('#story img')).toHaveCount(0);
+  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('글 완성본을 보관');
+  await page.locator('#nav-capture').click();
+  page.once('dialog', d => d.dismiss()); await page.locator('#new-day-btn').click();
+  await expect(page.locator('#memo-input')).toHaveValue(memo); expect((await stored(page)).story.lines).toHaveLength(3);
+  page.once('dialog', d => d.accept()); await page.locator('#new-day-btn').click();
+  await expect(page.locator('#memo-input')).toHaveValue('');
+  await expect.poll(async () => (await stored(page)).memoText).toBe('');
+  const empty = await stored(page); expect(empty.candidates).toHaveLength(0); expect(empty.story).toBeNull();
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await page.locator('#library-btn').click(); await page.locator('#books .card button').first().click();
+  await expect(page.locator('#book-content')).toContainText(passages[0]);
+  await expect(page.locator('#book-content img')).toHaveCount(0);
+  expect(requests.filter(r => r.url.endsWith('/api/image'))).toHaveLength(0);
+});
+
+test('v26 (h) export excludes raw photo, private memo, rejected candidate and child response', async ({ page }, testInfo) => {
+  const requests = await boot(page);
+  await page.locator('#photo-input').setInputFiles({ name: 'private-original.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.locator('#memo-input').fill(memo + ' PRIVATE_MEMO_ONLY'); await page.locator('#extract-btn').click();
+  await expect(page.locator('#screen-review')).toBeVisible();
+  for (let i = 0; i < 2; i++) await page.locator('#memo-candidates').getByRole('button', { name: '맞아요', exact: true }).nth(i).click();
+  await page.locator('#memo-candidates').getByRole('button', { name: '아니에요', exact: true }).nth(2).click();
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[0]); await expect(page.locator('#story')).not.toContainText(passages[2]);
+  await page.locator('#testimony-input').fill('PRIVATE_CHILD_ONLY'); await page.locator('#save-testimony').click();
+  await page.locator('#export-book').click(); const download = page.waitForEvent('download'); await page.locator('#download-book').click();
+  const file = testInfo.outputPath('private-boundary.html'); await (await download).saveAs(file);
+  const html = require('node:fs').readFileSync(file, 'utf8');
+  expect(html).toContain(passages[0]); expect(html).not.toMatch(/PRIVATE_MEMO_ONLY|PRIVATE_CHILD_ONLY|private-original|data:image/);
+  expect(html).not.toContain(passages[2]); expect(html).not.toContain(memo);
+  const extraction = requests.find(r => r.body.messages?.[0].content.startsWith('Extract'));
+  const originalPhoto = extraction.body.messages[1].content.find(part => part.type === 'image_url').image_url.url;
+  expect(originalPhoto).toMatch(/^data:image\/jpeg/); expect(html).not.toContain(originalPhoto);
+});
+
+test('v26 all 23 fallback locales show the new English copy', async ({ page }) => {
+  await boot(page);
+  const languages = await page.locator('#lang-select option').evaluateAll(options => options.map(o => o.value).filter(v => !['ko', 'en'].includes(v)));
+  expect(languages).toHaveLength(23);
+  for (const lang of languages) {
+    await page.locator('#lang-select').selectOption(lang);
+    await expect(page.locator('#new-day-btn')).toHaveText('Clear current record and start over');
+    await expect(page.locator('[data-copy=voiceReplace]')).toContainText('replace typed memo text');
+    await expect(page.locator('[data-copy=photoSkip]')).toContainText('Paragraphs stay text-only');
+    await expect(page.locator('#language-note')).toBeVisible();
+  }
+});
 test('T01/T02/T19 real UI skips photos, unuses a confirmed fact and displays exact passages', async ({ page }) => {
   const requests = await boot(page); await review(page);
   await page.locator('#memo-candidates input[type=checkbox]').first().uncheck();
@@ -177,7 +333,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: core-hardening (shell v25)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: order-clarity (shell v26)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
