@@ -330,15 +330,6 @@
     } catch (e) { if (jobs.current(token)) fail(e); }
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
-  function sample() {
-    const hasContent = !!record.memoText.trim() || record.candidates.length > 0 || record.testimony.length > 0;
-    if (record.mode !== 'sample' && hasContent && !confirm(t('sampleConfirm'))) return;
-    invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = W.create(); record.mode = 'sample';
-    record.memoText = '오늘 아이와 공원에 갔어요. 아이가 나뭇잎을 주웠어요. 집에 돌아와 나뭇잎을 책 사이에 넣었어요.';
-    const parts = record.memoText.match(/[^.]+\./g).map(x => x.trim());
-    record = W.extract(record, { candidates: parts.map(text => ({ text, quote: text, source: 'memo', grade: 'C' })), unknowns: [] });
-    $('memo-input').value = record.memoText; persist(); show('review');
-  }
   async function load() {
     synced = false;
     const stored = await S.load(db); const legacy = localStorage.getItem('taw-day-v1');
@@ -370,7 +361,7 @@
     $('memo-input').oninput = () => change(W.input(record, $('memo-input').value));
     $('photo-input').onchange = () => { if (photoURL) URL.revokeObjectURL(photoURL); photoFile = $('photo-input').files[0] || null; photoData = null; photoURL = photoFile ? URL.createObjectURL(photoFile) : null; change(W.input(record, record.memoText)); };
     $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
-    $('extract-btn').onclick = extract; $('load-sample-btn').onclick = sample; $('transcribe-btn').onclick = voice;
+    $('extract-btn').onclick = extract; $('transcribe-btn').onclick = voice;
     $('prepare-btn').onclick = preview; $('nav-preview').onclick = preview; $('nav-review').onclick = () => show('review');
     $('nav-capture').onclick = $('edit-input').onclick = () => show('capture');
     for (const k of ['people', 'animals']) $('identity-' + k).onchange = () => change(W.identity(record, k, $('identity-' + k).value));

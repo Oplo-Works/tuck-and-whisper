@@ -175,9 +175,9 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: paragraph-art-photo-required (shell v23)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: sample-removed (shell v24)'); await context.close();
 });
-for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
+for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
     await boot(page);
     await page.locator('summary[data-copy=voice]').click();
@@ -194,8 +194,6 @@ for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
       await expect(page.locator('#memo-input')).toHaveValue('Latest dummy memo');
     } else if (reset === 'delete all') {
       await page.locator('#library-btn').click(); await page.locator('#delete-all').click();
-    } else if (reset === 'sample') {
-      await page.locator('#load-sample-btn').click(); await page.locator('#nav-capture').click();
     } else {
       await page.locator('#new-day-btn').click();
     }
@@ -214,7 +212,7 @@ test('v19 ordinary edits and candidate decisions preserve an untranscribed voice
   await expect(page.locator('#transcribe-btn')).toBeEnabled();
 });
 
-for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
+for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v20 testimony draft clears on ' + reset, async ({ page, context }) => {
     await boot(page);
     await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
@@ -232,8 +230,6 @@ for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
     } else if (reset === 'delete all') {
       await page.locator('#library-btn').click(); await page.locator('#delete-all').click();
       await expect(page.locator('#screen-capture')).toBeVisible();
-    } else if (reset === 'sample') {
-      await page.locator('#load-sample-btn').click();
     } else {
       await page.locator('#new-day-btn').click();
     }
@@ -371,26 +367,13 @@ test('v18 after an open failure, Retry save never overwrites an existing stored 
   await page.locator('#reload-record').click(); await expect(page.locator('#memo-input')).toHaveValue('이미 저장된 기록');
 });
 
-// v21: sample replacement guard (1-1) and damaged-record recovery (2-1).
-test('v21 sample asks before replacing a non-empty record; cancel keeps it, confirm replaces it', async ({ page }) => {
-  await boot(page); await review(page);
-  let accept = false; const dialogs = [];
-  page.on('dialog', async d => { dialogs.push(d.message()); accept ? await d.accept() : await d.dismiss(); });
-  await page.locator('#nav-capture').click(); await page.locator('#load-sample-btn').click();
-  expect(dialogs).toHaveLength(1); expect(dialogs[0]).toContain('샘플로 바꿀까요');
-  await expect(page.locator('#screen-capture')).toBeVisible();
-  expect((await stored(page)).mode).toBe('live'); expect((await stored(page)).memoText).toBe(memo);
-  accept = true; await page.locator('#load-sample-btn').click();
-  await expect(page.locator('#screen-review')).toBeVisible();
-  expect((await stored(page)).mode).toBe('sample'); expect(dialogs).toHaveLength(2);
-});
-test('v21 sample needs no confirmation on an empty record or when already sampling', async ({ page }) => {
+test('v24 entry has no sample control and reaches review through photo and memo input', async ({ page }) => {
   await boot(page);
-  let dialogs = 0; page.on('dialog', async d => { dialogs++; await d.accept(); });
-  await page.locator('#load-sample-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
-  expect((await stored(page)).mode).toBe('sample'); expect(dialogs).toBe(0);
-  await page.locator('#nav-capture').click(); await page.locator('#load-sample-btn').click();
-  await expect(page.locator('#screen-review')).toBeVisible(); expect(dialogs).toBe(0);
+  await expect(page.locator('#load-sample-btn')).toHaveCount(0);
+  await expect(page.locator('[data-copy=captureHint]')).toContainText('사진과 메모');
+  await review(page, true);
+  expect((await stored(page)).mode).toBe('live');
+  expect((await stored(page)).memoText).toBe(memo);
 });
 async function corruptField(page, field) {
   await page.evaluate(name => new Promise((resolve, reject) => {
@@ -553,11 +536,10 @@ test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no ne
   const bookText = await page.locator('#book-content').textContent();
   const inBook = passages.map(p => bookText.indexOf(p)); expect(inBook[0]).toBeGreaterThan(-1); expect(inBook[0]).toBeLessThan(inBook[1]); expect(inBook[1]).toBeLessThan(inBook[2]);
 });
-test('v23 (d) sample mode has no photo anchor, so its paragraphs stay text-only with guidance and no image call', async ({ page }) => {
+test('v24 memo input without a photo keeps text-only paragraphs and makes no image call', async ({ page }) => {
   const requests = await boot(page);
-  await page.locator('#load-sample-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
-  expect((await stored(page)).mode).toBe('sample'); await expect(page.locator('#photo-status')).toHaveText('');
-  for (let i = 0; i < 3; i++) await page.locator('#memo-candidates').getByRole('button', { name: '맞아요', exact: true }).nth(i).click();
+  await review(page);
+  expect((await stored(page)).mode).toBe('live'); await expect(page.locator('#photo-status')).toHaveText('');
   await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
   await expect(page.locator('#story .para-art')).toHaveCount(3);
   for (let i = 0; i < 3; i++) {

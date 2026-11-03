@@ -1,10 +1,11 @@
 /* New workflow copy: Korean/English reviewed; other selected languages use English. */
 (function () {
   const strings = {
+    captureHint: ['사진과 메모로 오늘의 이야기를 시작해요. 사진이 없어도 메모로 글 이야기를 남길 수 있어요.', 'Start today’s story with a photo and memo. You can also save a text story with a memo alone.'],
     capture: ['오늘 있었던 일', 'Today’s moments'], review: ['이 내용이 맞나요?', 'Does this look right?'],
     preview: ['읽어줄 준비', 'Ready to read'], bedtime: ['함께 읽기', 'Read together'],
     memo: ['메모', 'Memo'], photo: ['사진 (선택)', 'Photo (optional)'], extract: ['이야기 준비 시작', 'Start preparing'],
-    sample: ['샘플 둘러보기', 'Explore a sample'], voice: ['음성 메모 (최대 10분·32MB)', 'Voice memo (up to 10 minutes / 32 MB)'],
+    voice: ['음성 메모 (최대 10분·32MB)', 'Voice memo (up to 10 minutes / 32 MB)'],
     transcribe: ['음성으로 메모 채우기', 'Transcribe memo'], busy: ['준비하고 있어요…', 'Working…'],
     retention: ['메모·확인 내용·아이의 말은 이 브라우저에 저장돼요. 원본 사진은 저장하지 않아요. 아직 보관하지 않은 그림은 새로고침하면 사라져요.', 'Memo, review decisions and your child’s words stay in this browser. Original photos are not saved. Unsaved artwork disappears on reload.'],
     inputPrivacy: ['추출할 때 메모와 선택한 사진을 AI 서비스에 보내요.', 'Extraction sends your memo and optional photo to the AI service.'],
@@ -14,7 +15,6 @@
     skipped: ['확인하지 않은 내용은 이번 이야기에 쓰지 않아요.', 'Unreviewed details will not be used.'],
     prepare: ['확인한 내용으로 준비', 'Prepare selected details'], edit: ['입력 수정', 'Edit input'],
     newDay: ['새 하루 시작', 'Start a new day'], newDayConfirm: ['현재 하루를 새 기록으로 바꿀까요? 보관한 완성본은 남아요.', 'Replace the current day? Saved books will remain.'],
-    sampleConfirm: ['현재 기록을 샘플로 바꿀까요? 지금 기록은 사라져요. 보관한 완성본은 남아요.', 'Replace the current record with the sample? Your current record will be gone. Saved books will remain.'],
     corrupt: ['저장된 기록이 손상되어 읽을 수 없어요. 원본은 이 브라우저에 따로 보관했어요. 새 기록으로 시작하면 손상된 기록 자리에 새 기록이 저장돼요.', 'The saved record is damaged and cannot be read. The original is kept separately in this browser. Starting a new record will save over the damaged one.'],
     startFresh: ['새 기록으로 시작', 'Start a new record'],
     selected: ['{n}개 내용을 사용해요', '{n} details selected'],
