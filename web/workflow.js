@@ -113,6 +113,23 @@
     return { text: template.replace('{fact}', fact.text), factIds: [fact.id], revision: r.contentRevision,
       index, edited: false, unknownId: null };
   }
+  // Paragraphs come only from story paragraph boundaries (paragraphEnd), never
+  // from sentences or periods. Re-joining the paragraphs must reproduce the
+  // story lines exactly; if it does not, fall back to a single paragraph.
+  const PARAGRAPH_ART_LIMIT = 5;
+  const SENSITIVE_SCENE = /목욕|갈아입|옷을\s*갈아|수영|샤워|bath|shower|swim|undress|changing\s+clothes/i;
+  function paragraphs(r) {
+    if (!validOutput(r, r.story)) return [];
+    const groups = []; let current = [];
+    for (const line of r.story.lines) { current.push(line); if (line.paragraphEnd !== false) { groups.push(current); current = []; } }
+    if (current.length) groups.push(current);
+    const flat = groups.flatMap(g => g.map(l => l.text));
+    const exact = flat.length === r.story.lines.length && flat.every((text, i) => text === r.story.lines[i].text);
+    const source = exact ? groups : [r.story.lines];
+    return source.map((lines, index) => { const text = lines.map(l => l.text).join(' '); return {
+      index, lines: lines.map(l => l.text), text, factIds: lines.map(l => l.factIds[0]),
+      sensitive: SENSITIVE_SCENE.test(text) }; });
+  }
   function validQuestion(r, q) {
     const ids = new Set(used(r).map(c => c.id));
     return !!(prepared(r) && q && typeof q.text === 'string' && q.text.trim() && q.revision === r.contentRevision &&
@@ -179,5 +196,5 @@
       current(token) { return token.epoch === epoch && token.seq === serials.get(token.name); } };
   }
   return { create, used, canPrepare, prepared, imageAllowed, input, extract, decide, include, identity, prepare,
-    compose, validOutput, question, validQuestion, migrate, sanitize, jobs };
+    compose, validOutput, paragraphs, PARAGRAPH_ART_LIMIT, question, validQuestion, migrate, sanitize, jobs };
 });

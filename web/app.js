@@ -8,6 +8,9 @@
   // corrupted: the stored record failed sanitize; quarantined keeps its raw form.
   let synced = false, conflicted = false, retrying = false, corrupted = false, quarantined = null;
   let photoFile = null, photoData = null, photoURL = null, art = null, acceptedArt = null;
+  // Paragraph illustrations, aligned to W.paragraphs(record) indexes. Session-only
+  // like the single illustration; saved books carry their own copies.
+  let paragraphArt = [], paragraphBusy = [], paragraphFailed = [];
   let screen = 'capture', running = {}, statuses = {}, loaded = false;
   const t = (key, vars) => window.TawCopy(key, I.getLanguage(), vars);
   function node(tag, text, cls) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; }
@@ -88,7 +91,12 @@
     const url = URL.createObjectURL(new Blob([contents], { type })); const a = node('a');
     a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function invalidate() { jobs.invalidate(); running = {}; statuses = {}; art = null; acceptedArt = null; message(''); }
+  function invalidate() { jobs.invalidate(); running = {}; statuses = {}; art = null; acceptedArt = null; paragraphArt = []; paragraphBusy = []; paragraphFailed = []; message(''); }
+  function clearParagraphArt() { paragraphArt = []; paragraphBusy = []; paragraphFailed = []; }
+  // The single fixed anchor for every paragraph call: the parent-approved
+  // illustration when there is one, otherwise the original photo. A generated
+  // paragraph image is never used as an anchor (no chaining).
+  function artAnchor() { return acceptedArt || photoData || null; }
   function change(next) { if (next === record) return; invalidate(); record = next; persist(); render(); }
   function show(name) {
     screen = name;
@@ -146,6 +154,43 @@
       target.append(details);
     }
   }
+  // Bedtime story: each paragraph is rendered with its own illustration slot.
+  // Paragraph text is the confirmed story text, unchanged; only the slot
+  // content (image, failure note, text-only note, or a make/redraw button)
+  // varies. No page-turning UI: pairs simply follow the reading flow.
+  function renderStory() {
+    const target = $('story'); target.replaceChildren();
+    if (!W.validOutput(record, record.story)) return;
+    if (record.story.fallback) target.append(node('p', t('fallback'), 'hint'));
+    const allowed = W.imageAllowed(record);
+    for (const p of W.paragraphs(record)) {
+      target.append(node('p', p.text));
+      const slot = node('div', undefined, 'para-art');
+      if (paragraphArt[p.index]) {
+        slot.append(image(paragraphArt[p.index]), node('p', t(artAnchor() ? 'aiArtFromPhoto' : 'aiArtFromText'), 'hint'));
+        const redo = node('button', t('paraArtRedo')); redo.disabled = !allowed || !!paragraphBusy[p.index];
+        redo.onclick = () => generateParagraphArt(p.index); slot.append(redo);
+      } else if (p.sensitive) {
+        slot.append(node('p', t('paraSkipped'), 'hint'));
+      } else if (p.index >= W.PARAGRAPH_ART_LIMIT) {
+        slot.append(node('p', t('paraTextOnly'), 'hint'));
+      } else if (paragraphFailed[p.index]) {
+        slot.append(node('p', t('paraArtFailed'), 'notice'));
+        const retry = node('button', t('paraArtRetry')); retry.disabled = !allowed || !!paragraphBusy[p.index];
+        retry.onclick = () => generateParagraphArt(p.index); slot.append(retry);
+      } else {
+        const make = node('button', t(paragraphBusy[p.index] ? 'busy' : 'paraArtOne'));
+        make.disabled = !allowed || !!paragraphBusy[p.index];
+        make.onclick = () => generateParagraphArt(p.index); slot.append(make);
+      }
+      target.append(slot);
+    }
+    if (record.story.observations?.length) {
+      const details = node('details'); details.append(node('summary', t('photoGroup')));
+      for (const line of record.story.observations) details.append(node('p', line.text));
+      target.append(details);
+    }
+  }
   function render() {
     $('extract-btn').disabled = !!running.extract || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
@@ -160,7 +205,11 @@
     }
     const ready = W.prepared(record);
     $('restricted-notice').hidden = ready;
-    output($('briefing'), record.briefing); output($('story'), record.story);
+    output($('briefing'), record.briefing); renderStory();
+    const storyValid = W.validOutput(record, record.story);
+    $('para-art-tools').hidden = !storyValid;
+    $('para-art-all').disabled = !W.imageAllowed(record) || paragraphBusy.some(Boolean);
+    $('para-art-hint').textContent = storyValid && !W.imageAllowed(record) ? t('paraGate') : '';
     $('briefing-status').textContent = running.briefing ? t('busy') : (statuses.briefing || '');
     $('story-status').textContent = running.story ? t('busy') : (statuses.story || '');
     $('briefing-retry').disabled = !ready || !!running.briefing; $('story-retry').disabled = !ready || !!running.story;
@@ -205,11 +254,11 @@
       const facts = W.used(start).filter(c => c.source === 'memo');
       const ids = await API.arrange(kind, facts);
       if (!jobs.current(token)) return;
-      record = Object.assign({}, record, { [kind]: W.compose(start, kind, ids, false) }); persist();
+      record = Object.assign({}, record, { [kind]: W.compose(start, kind, ids, false) }); if (kind === 'story') clearParagraphArt(); persist();
     } catch (e) {
       if (!jobs.current(token)) return;
       // Retain valid prior work; first failure falls back to source passages.
-      if (!W.validOutput(record, record[kind])) record = Object.assign({}, record, { [kind]: W.compose(start, kind, null, true) });
+      if (!W.validOutput(record, record[kind])) { record = Object.assign({}, record, { [kind]: W.compose(start, kind, null, true) }); if (kind === 'story') clearParagraphArt(); }
       statuses[kind] = t('fallback'); persist();
     } finally { if (jobs.current(token)) { running[kind] = false; render(); } }
   }
@@ -232,9 +281,29 @@
       if (!jobs.current(token)) return;
       const result = await API.style(data);
       if (!jobs.current(token)) return;
-      art = result; acceptedArt = null;
+      art = result; acceptedArt = null; clearParagraphArt();
     } catch (e) { if (jobs.current(token)) statuses.style = t('failed', { message: e.message }); }
     finally { if (jobs.current(token)) { running.style = false; render(); } }
+  }
+  // One /api/image call per paragraph, gated exactly like the single
+  // illustration. A failure marks only that paragraph; the rest are unaffected.
+  async function generateParagraphArt(index) {
+    const paras = W.paragraphs(record), p = paras[index];
+    if (!p || p.sensitive || index >= W.PARAGRAPH_ART_LIMIT || paragraphBusy[index] || !W.imageAllowed(record)) return;
+    const token = jobs.begin('para' + index), text = p.text;
+    paragraphBusy[index] = true; paragraphFailed[index] = false; render();
+    try {
+      if (photoFile && !photoData && !acceptedArt) photoData = await API.photo(photoFile);
+      if (!jobs.current(token)) return;
+      const url = await API.paragraphArt(text, artAnchor());
+      if (!jobs.current(token)) return;
+      paragraphArt[index] = url;
+    } catch (e) { if (jobs.current(token)) paragraphFailed[index] = true; }
+    finally { if (jobs.current(token)) { paragraphBusy[index] = false; render(); } }
+  }
+  async function generateAllParagraphArt() {
+    const paras = W.paragraphs(record);
+    for (const p of paras) if (!paragraphArt[p.index] && !p.sensitive && p.index < W.PARAGRAPH_ART_LIMIT) await generateParagraphArt(p.index);
   }
   async function voice() {
     const file = $('voice-input').files[0]; if (!file || running.voice) return;
@@ -294,6 +363,7 @@
     $('another-question').onclick = () => nextQuestion();
     $('question-text').oninput = () => { if (!record.question) return; record = Object.assign({}, record, { question: Object.assign({}, record.question, { text: $('question-text').value, edited: true }) }); persist(); $('question-meta').textContent = t('edited'); };
     $('open-bedtime').onclick = () => { show('bedtime'); if (W.prepared(record) && !W.validOutput(record, record.story)) generate('story'); };
+    $('para-art-all').onclick = generateAllParagraphArt;
     $('style-btn').onclick = style;
     $('accept-art').onclick = () => { if (W.imageAllowed(record)) acceptedArt = art; render(); };
     $('reject-art').onclick = () => { acceptedArt = null; art = null; render(); };
@@ -313,6 +383,7 @@
     render(); window.TAW_READY = true;
     // Extension boundary for local books. No service credentials or mutable globals exposed.
     if (window.TawBooksUI) window.TawBooksUI.init({ getRecord: () => record, getDB: () => db, getArt: () => W.imageAllowed(record) ? acceptedArt : null,
+      getParagraphArts: () => W.imageAllowed(record) ? paragraphArt.slice() : [],
       getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download,
       reset: async () => {
         if (blocked) throw Error('Unsaved changes'); blocked = true;

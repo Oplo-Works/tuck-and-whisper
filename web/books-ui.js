@@ -6,14 +6,27 @@
   function display(book) {
     release(); const area = $('book-content'); area.replaceChildren();
     if (book.artwork) { const url = URL.createObjectURL(book.artwork); objectURLs.push(url); area.append(app.image(url)); }
-    for (const text of book.lines) area.append(app.node('p', text));
+    if (Array.isArray(book.paragraphs) && book.paragraphs.length) {
+      // Restore paragraph + illustration pairs in order.
+      for (const p of book.paragraphs) {
+        for (const text of p.lines) area.append(app.node('p', text));
+        if (p.artwork) { const url = URL.createObjectURL(p.artwork); objectURLs.push(url); area.append(app.image(url)); }
+      }
+    } else {
+      for (const text of book.lines) area.append(app.node('p', text));
+    }
     if (book.question) area.append(app.node('blockquote', book.question));
   }
   async function currentBook() {
     const r = app.getRecord(), revision = r.contentRevision, dayId = r.dayId, approved = app.getArt();
+    const paraUrls = (app.getParagraphArts ? app.getParagraphArts() : []).slice();
     const image = await B.artwork(approved);
-    if (app.getRecord().dayId !== dayId || app.getRecord().contentRevision !== revision || app.getArt() !== approved) throw Error('Story or illustration changed');
-    return B.snapshot(app.getRecord(), image, W);
+    const paraImages = [];
+    for (const url of paraUrls) paraImages.push(await B.artwork(url || null));
+    const nowUrls = app.getParagraphArts ? app.getParagraphArts() : [];
+    if (app.getRecord().dayId !== dayId || app.getRecord().contentRevision !== revision || app.getArt() !== approved ||
+        nowUrls.length !== paraUrls.length || nowUrls.some((u, i) => u !== paraUrls[i])) throw Error('Story or illustration changed');
+    return B.snapshot(app.getRecord(), image, W, paraImages);
   }
   async function save() {
     if (saving || app.isBlocked()) return; saving = true; app.message(''); render();
@@ -22,7 +35,9 @@
       if (app.isBlocked()) throw Error('Unsaved changes');
       await S.saveBook(app.getDB(), book, app.getVersion());
       const readback = (await S.books(app.getDB())).find(b => b.id === book.id);
-      if (!readback || readback.lines.join('\n') !== book.lines.join('\n') || (readback.artwork?.size || 0) !== (book.artwork?.size || 0)) throw Error('Book verification failed');
+      if (!readback || readback.lines.join('\n') !== book.lines.join('\n') || (readback.artwork?.size || 0) !== (book.artwork?.size || 0) ||
+          (readback.paragraphs?.length || 0) !== (book.paragraphs?.length || 0) ||
+          (readback.paragraphs || []).some((p, i) => (p.artwork?.size || 0) !== (book.paragraphs[i].artwork?.size || 0))) throw Error('Book verification failed');
       app.message(app.t(book.artwork ? 'bookSaved' : 'bookSavedText'));
     } catch (e) { app.fail(e); }
     finally { saving = false; render(); }
@@ -54,10 +69,13 @@
       const current = app.getRecord();
       if (current.dayId !== exportDay || current.contentRevision !== exportRevision || !W.validOutput(current, current.story) ||
           current.story.lines.map(l => l.text).join('\n') !== exportSnapshot.lines.join('\n') || (current.question?.text || '') !== exportSnapshot.question) throw Error('Story changed; preview again');
-      const data = $('export-text-only').checked ? '' : await B.dataURL(exportSnapshot.artwork);
+      const textOnly = $('export-text-only').checked;
+      const data = textOnly ? '' : await B.dataURL(exportSnapshot.artwork);
+      const paraData = [];
+      if (Array.isArray(exportSnapshot.paragraphs)) for (const p of exportSnapshot.paragraphs) paraData.push(textOnly ? '' : await B.dataURL(p.artwork));
       // Check again after FileReader, which is asynchronous.
       if (app.getRecord() !== current) throw Error('Record changed; preview again');
-      const html = B.html(exportSnapshot, data, window.TAW_I18N.getLanguage(), { title: app.t('bedtime'), art: app.t('photo'), note: app.t('exportHint') });
+      const html = B.html(exportSnapshot, data, window.TAW_I18N.getLanguage(), { title: app.t('bedtime'), art: app.t('photo'), note: app.t('exportHint') }, paraData);
       app.download('tuck-and-whisper-' + new Date(exportSnapshot.createdAt).toISOString().slice(0, 10) + '.html', html, 'text/html');
       $('book-dialog').close();
     } catch (e) { app.fail(e); }

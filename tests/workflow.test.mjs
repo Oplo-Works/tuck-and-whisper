@@ -82,6 +82,27 @@ test('DS1 independent jobs survive completion; all invalidation events kill old 
 test('generation failure leaves selection valid for fallback and retry', () => {
   const r = ready(), out = W.compose(r, 'story', null, true); assert.equal(W.prepared(r), true); assert.equal(W.validOutput(r, out), true);
 });
+test('paragraphs split only on paragraph boundaries and rejoin to the exact story', () => {
+  const r = ready(), ids = W.used(r).filter(c => c.source === 'memo').map(c => c.id);
+  r.story = W.compose(r, 'story', [ids[0]], false);
+  const paras = W.paragraphs(r);
+  // Three confirmed passages in two paragraphs: the second paragraph holds two
+  // sentences yet stays one paragraph (no sentence/period splitting).
+  assert.equal(paras.length, 2); assert.equal(paras[1].lines.length, 2);
+  assert.deepEqual(paras.flatMap(p => p.lines), r.story.lines.map(l => l.text));
+  assert.equal(paras[0].text, r.story.lines[0].text);
+  assert.equal(W.paragraphs(W.create()).length, 0);
+  assert.ok(Number.isInteger(W.PARAGRAPH_ART_LIMIT) && W.PARAGRAPH_ART_LIMIT >= 1);
+});
+test('sensitive scenes are marked text-only at paragraph level', () => {
+  let r = W.input(W.create(), '아이가 목욕을 했어요. 공원에서 놀았어요.');
+  r = W.extract(r, { candidates: ['아이가 목욕을 했어요.', '공원에서 놀았어요.'].map(text => ({ text, quote: text, source: 'memo', grade: 'C' })) });
+  for (const c of r.candidates) r = W.decide(r, c.id, 'confirmed');
+  r = W.prepare(r); r.story = W.compose(r, 'story', null, true);
+  const paras = W.paragraphs(r);
+  assert.equal(paras.find(p => p.text.includes('목욕')).sensitive, true);
+  assert.equal(paras.find(p => p.text.includes('공원')).sensitive, false);
+});
 test('sanitize rejects malformed testimony, history and unknown entries instead of passing them to rendering', () => {
   const clone = () => JSON.parse(JSON.stringify(ready()));
   const valid = clone(); valid.testimony = [{ text: '답', at: 1, revision: 0, question: null }];

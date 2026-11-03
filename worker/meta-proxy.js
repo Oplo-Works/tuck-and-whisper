@@ -136,8 +136,10 @@ export default {
       try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body.' }, 400); }
       if (!isPlainObject(body)) return json({ error: 'JSON body must be an object.' }, 400);
       if (!filledString(body.prompt)) return json({ error: 'prompt is required.' }, 400);
-      if (!Array.isArray(body.images) || body.images.length === 0) {
-        return json({ error: 'images must be a non-empty array.' }, 400);
+      // An empty images array is a text-only illustration request (paragraph
+      // artwork without a photo); a non-array images value is still rejected.
+      if (body.images !== undefined && !Array.isArray(body.images)) {
+        return json({ error: 'images must be an array.' }, 400);
       }
       const model = resolveModel(body, 'muse-image-1.0');
       if (!model) return json({ error: 'Model not allowed.' }, 400);

@@ -10,18 +10,19 @@ async function boot(page, hooks = {}) {
     const req = route.request(), body = req.postDataJSON(); requests.push({ url: req.url(), body });
     if (req.url().endsWith('/api/image')) {
       if (hooks.image) await hooks.image.promise;
+      if (hooks.imageFail && (body.prompt || '').includes(hooks.imageFail)) return route.fulfill({ status: 500, json: { error: 'mock image failure' } });
       return route.fulfill({ json: { data: [{ b64_json: png }] } });
     }
     const system = body.messages[0].content;
     let result;
     if (system.startsWith('Extract')) {
       if (hooks.extract) await hooks.extract.promise;
-      result = { candidates: passages.map(text => ({ text, quote: text, source: 'memo', grade: 'B' })).concat({ text: '사진에 작은 강아지가 보여요.', source: 'photo', grade: 'C' }), unknowns: ['기분은 어떨까?'] };
+      result = { candidates: (hooks.passages || passages).map(text => ({ text, quote: text, source: 'memo', grade: 'B' })).concat({ text: '사진에 작은 강아지가 보여요.', source: 'photo', grade: 'C' }), unknowns: ['기분은 어떨까?'] };
     } else {
       if (system.includes('bedtime') && hooks.story) await hooks.story.promise;
       if (system.includes('briefing') && hooks.briefing) await hooks.briefing.promise;
       const facts = JSON.parse(body.messages[1].content);
-      if (hooks.invalid) result = { ids: ['FORBIDDEN'] }; else result = { ids: facts.map(f => f.id) };
+      if (hooks.invalid) result = { ids: ['FORBIDDEN'] }; else if (hooks.arrange) result = { ids: hooks.arrange(facts) }; else result = { ids: facts.map(f => f.id) };
     }
     await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify(result) } }] } });
   });
@@ -174,7 +175,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: sample-guard-corrupt-recovery (shell v21)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: paragraph-art (shell v22)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -424,6 +425,88 @@ for (const field of ['testimony', 'history']) {
     expect((await stored(page)).memoText).toBe('복구 후 새 메모');
   });
 }
+function paraPrompts(requests) { return requests.filter(r => (r.body.prompt || '').includes('Confirmed passages:')).map(r => r.body.prompt); }
+test('v22 stage1: one illustration per paragraph, paired and built only from confirmed passages', async ({ page }) => {
+  const requests = await boot(page); await reading(page, true);
+  await page.locator('#para-art-all').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  const prompts = paraPrompts(requests); expect(prompts).toHaveLength(3);
+  for (let i = 0; i < 3; i++) {
+    expect(prompts[i]).toContain(passages[i]);
+    for (let j = 0; j < 3; j++) if (j !== i) expect(prompts[i]).not.toContain(passages[j]);
+    expect(prompts[i]).not.toContain('사진에 작은 강아지가 보여요.'); // unconfirmed photo candidate
+    expect(prompts[i]).not.toContain('기분은 어떨까?'); // unknown, not a fact
+    expect(prompts[i]).not.toContain(memo); // the raw memo is never the image input
+  }
+  expect(requests.filter(r => (r.body.prompt || '').includes('Confirmed passages:') && r.body.images && r.body.images.length === 1)).toHaveLength(3); // one shared photo-derived anchor
+  const storyTexts = await page.locator('#story > p').allTextContents();
+  expect(storyTexts.filter(x => passages.includes(x))).toEqual(passages); // paragraph texts unchanged
+});
+test('v22 stage1: paragraph failure is isolated and its redraw retries only that paragraph', async ({ page }) => {
+  const requests = await boot(page, { imageFail: passages[1] }); await reading(page, true);
+  await page.locator('#para-art-all').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(2);
+  await expect(page.locator('#story .para-art').nth(1)).toContainText('그림을 불러오지 못했어요');
+  await expect(page.locator('#story .para-art').nth(0).locator('img')).toHaveCount(1);
+  await expect(page.locator('#story .para-art').nth(2).locator('img')).toHaveCount(1);
+  expect(paraPrompts(requests)).toHaveLength(3);
+});
+test('v22 stage1: a single paragraph gets a single illustration (no forced minimum)', async ({ page }) => {
+  const requests = await boot(page, { arrange: facts => [facts[facts.length - 1].id] }); await reading(page, true);
+  await page.locator('#para-art-all').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(1);
+  const prompts = paraPrompts(requests); expect(prompts).toHaveLength(1);
+  for (const p of passages) expect(prompts[0]).toContain(p);
+  // Redrawing it makes exactly one more call for the same paragraph.
+  await page.locator('#story .para-art').nth(0).getByRole('button').click();
+  await expect.poll(() => paraPrompts(requests).length).toBe(2);
+  expect(paraPrompts(requests)[1]).toBe(prompts[0]);
+});
+test('v22 stage1: paragraph art stays disabled with guidance until the identity gate is answered', async ({ page }) => {
+  const requests = await boot(page); await review(page, true);
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[0]);
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  await expect(page.locator('#para-art-hint')).toContainText('같은지 확인해 주세요');
+  await expect(page.locator('#story .para-art button')).toHaveCount(3);
+  for (let i = 0; i < 3; i++) await expect(page.locator('#story .para-art button').nth(i)).toBeDisabled();
+  expect(paraPrompts(requests)).toHaveLength(0);
+});
+test('v22 stage1: saved and exported books keep every paragraph+illustration pair in order', async ({ page }, testInfo) => {
+  await boot(page); await reading(page, true);
+  await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  await page.locator('#testimony-input').fill('PRIVATE_CHILD_RESPONSE'); await page.locator('#save-testimony').click();
+  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  const downloadPromise = page.waitForEvent('download'); await page.locator('#export-book').click(); await page.locator('#download-book').click();
+  const download = await downloadPromise; const file = testInfo.outputPath(download.suggestedFilename()); await download.saveAs(file);
+  const fs = require('node:fs'); const html = fs.readFileSync(file, 'utf8');
+  expect((html.match(/data:image\/png;base64,/g) || []).length).toBe(4); // 1 approved single illustration + 3 paragraph illustrations
+  const at = passages.map(p => html.indexOf(p)); expect(at[0]).toBeGreaterThan(-1); expect(at[0]).toBeLessThan(at[1]); expect(at[1]).toBeLessThan(at[2]);
+  expect(html).not.toMatch(/PRIVATE_CHILD_RESPONSE|PRIVATE|https?:\/\//);
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await page.locator('#library-btn').click(); await page.locator('#books .card button').first().click();
+  await expect(page.locator('#book-dialog')).toBeVisible(); await expect(page.locator('#book-content img')).toHaveCount(4);
+  const bookText = await page.locator('#book-content').textContent();
+  const inBook = passages.map(p => bookText.indexOf(p)); expect(inBook[0]).toBeGreaterThan(-1); expect(inBook[0]).toBeLessThan(inBook[1]); expect(inBook[1]).toBeLessThan(inBook[2]);
+});
+test('v22 stage2: six paragraphs are capped at five illustrations, the sixth stays text-only', async ({ page }) => {
+  const six = ['첫째 장면이에요.', '둘째 장면이에요.', '셋째 장면이에요.', '넷째 장면이에요.', '다섯째 장면이에요.', '여섯째 장면이에요.'];
+  const requests = await boot(page, { passages: six });
+  await page.locator('#memo-input').fill(six.join(' '));
+  await page.locator('#photo-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.locator('#extract-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
+  for (let i = 0; i < 6; i++) await page.locator('#memo-candidates').getByRole('button', { name: '맞아요', exact: true }).nth(i).click();
+  await page.locator('#identity-details summary').click(); await page.locator('#identity-people').selectOption('same'); await page.locator('#identity-animals').selectOption('same');
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(six[5]);
+  await page.locator('#para-art-all').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(5);
+  expect(paraPrompts(requests)).toHaveLength(5);
+  for (let i = 0; i < 5; i++) expect(paraPrompts(requests)[i]).toContain(six[i]);
+  await expect(page.locator('#story .para-art').nth(5)).toContainText('글만 보여줘요');
+  await expect(page.locator('#story .para-art').nth(5).locator('img')).toHaveCount(0);
+  await expect(page.locator('#story')).toContainText(six[5]);
+});
 test('v21 a normal record reloads without any recovery banner', async ({ page }) => {
   await boot(page); await page.locator('#memo-input').fill('정상 더미 메모');
   await expect(page.locator('#save-status')).toContainText('저장됨');

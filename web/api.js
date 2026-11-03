@@ -37,14 +37,31 @@
       JSON.stringify(facts.map(f => ({ id: f.id, text: f.text }))));
     return result.ids;
   }
-  async function style(image) {
-    const result = await request('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      model: 'muse-image-1.0', prompt: 'Restyle this photo as a warm watercolor picture-book illustration. Keep the same people and animals, recognizable faces, poses and composition. Do not add or remove people, animals or objects.', images: [{ image_url: image }] }) });
+  function imageResult(result) {
     let url = result.data?.[0]?.b64_json || result.data?.[0]?.url || result.image || result.url || result.b64_json;
     if (typeof url !== 'string' || !url) throw Error('No image');
     if (!/^(data:|https:)/.test(url)) url = 'data:image/png;base64,' + url;
     if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(url) && !/^https:\/\//.test(url)) throw Error('Unsupported image');
     return url;
+  }
+  async function style(image) {
+    const result = await request('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      model: 'muse-image-1.0', prompt: 'Restyle this photo as a warm watercolor picture-book illustration. Keep the same people and animals, recognizable faces, poses and composition. Do not add or remove people, animals or objects.', images: [{ image_url: image }] }) });
+    return imageResult(result);
+  }
+  // One image per paragraph. The only story material in the prompt is the
+  // paragraph's Gate 1 confirmed passages; the raw memo is never sent. The
+  // anchor, when present, is the single fixed photo-derived reference shared
+  // by every paragraph call (a generated paragraph image is never an anchor).
+  async function paragraphArt(paragraphText, anchor) {
+    const prompt = [
+      'Warm watercolor picture-book illustration for one paragraph of a bedtime story.',
+      'Draw ONE representative scene from the confirmed passages below. Show only what those passages support; do not invent new events, places, objects or named characters.',
+      'Keep the main characters consistent: same faces, hair, clothing colors and age group as the reference image when one is provided. Any background people stay small and out of focus.',
+      'Confirmed passages: ' + paragraphText].join('\n');
+    const result = await request('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      model: 'muse-image-1.0', prompt, images: anchor ? [{ image_url: anchor }] : [] }) });
+    return imageResult(result);
   }
   async function voice(file, language) {
     if (file.size > 32 * 1024 * 1024) throw Error('32 MB maximum');
@@ -58,7 +75,7 @@
     return result.transcript;
   }
   // Existing 24 kHz mono WAV conversion is appended below during this refactor.
-  window.TawAPI = { photo, extract, arrange, style, voice };
+  window.TawAPI = { photo, extract, arrange, style, paragraphArt, voice };
     async function audioFileToWav(file) {
     const bytes = await file.arrayBuffer();
     const decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
