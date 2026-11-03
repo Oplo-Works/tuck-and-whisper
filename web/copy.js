@@ -1,0 +1,63 @@
+/* New workflow copy: Korean/English reviewed; other selected languages use English. */
+(function () {
+  const strings = {
+    capture: ['오늘 있었던 일', 'Today’s moments'], review: ['이 내용이 맞나요?', 'Does this look right?'],
+    preview: ['읽어줄 준비', 'Ready to read'], bedtime: ['함께 읽기', 'Read together'],
+    memo: ['메모', 'Memo'], photo: ['사진 (선택)', 'Photo (optional)'], extract: ['이야기 준비 시작', 'Start preparing'],
+    sample: ['샘플 둘러보기', 'Explore a sample'], voice: ['음성 메모 (최대 10분·32MB)', 'Voice memo (up to 10 minutes / 32 MB)'],
+    transcribe: ['음성으로 메모 채우기', 'Transcribe memo'], busy: ['준비하고 있어요…', 'Working…'],
+    retention: ['메모·확인 내용·아이의 말은 이 브라우저에 저장돼요. 원본 사진은 저장하지 않아요. 아직 보관하지 않은 그림은 새로고침하면 사라져요.', 'Memo, review decisions and your child’s words stay in this browser. Original photos are not saved. Unsaved artwork disappears on reload.'],
+    inputPrivacy: ['추출할 때 메모와 선택한 사진을 AI 서비스에 보내요.', 'Extraction sends your memo and optional photo to the AI service.'],
+    confirm: ['맞아요', 'Confirm'], reject: ['아니에요', 'Reject'], include: ['이번 이야기에 사용', 'Use in this story'],
+    ungrounded: ['메모 원문을 찾지 못했어요. 메모를 수정하고 다시 추출해 주세요.', 'Source passage missing. Edit the memo and extract again.'],
+    photoGroup: ['사진에서 보이는 모습 (선택)', 'Photo observations (optional)'],
+    skipped: ['확인하지 않은 내용은 이번 이야기에 쓰지 않아요.', 'Unreviewed details will not be used.'],
+    prepare: ['확인한 내용으로 준비', 'Prepare selected details'], edit: ['입력 수정', 'Edit input'],
+    newDay: ['새 하루 시작', 'Start a new day'], newDayConfirm: ['현재 하루를 새 기록으로 바꿀까요? 보관한 완성본은 남아요.', 'Replace the current day? Saved books will remain.'],
+    selected: ['{n}개 내용을 사용해요', '{n} details selected'],
+    noMemo: ['확인한 메모 내용이 아직 없어요. 사진을 보며 자유롭게 이야기하거나 메모를 확인해 주세요.', 'No confirmed memo details yet. Talk about the photo, or review a memo to prepare a story.'],
+    generalQuestion: ['이 사진에서 무엇이 눈에 들어오니?', 'What do you notice in this picture?'],
+    identity: ['사진을 이야기의 그림으로 쓰려면', 'Before using this photo as the story illustration'],
+    people: ['사진 속 사람들은 메모에 나온 사람들과 같은가요?', 'Are the people in the photo the people in the memo?'],
+    animals: ['사진 속 동물들은 메모에 나온 동물들과 같은가요?', 'Are the animals in the photo the animals in the memo?'],
+    unconfirmed: ['나중에 확인', 'Decide later'], same: ['모두 같아요', 'All match'], absent: ['사진에 해당 대상이 없어요', 'None in the photo'],
+    different: ['다른 대상이 있어요', 'Some do not match'], unsure: ['모르겠어요', 'Not sure'],
+    noImage: ['사진과 이야기의 연결을 확인하면 그림을 추가할 수 있어요. 지금은 글로 함께 읽어요.', 'Confirm the photo-to-story connections to add an illustration. You can read the text now.'],
+    audit: ['전체 근거와 확인 기록', 'All sources and review history'], original: ['메모 원문', 'Original memo'],
+    history: ['변경 기록', 'Change history'], legacy: ['이전 버전 기록 — 현재 이야기에는 사용하지 않아요', 'Previous version — not used in the current story'],
+    question: ['함께 나눌 질문', 'A question to share'], another: ['다른 질문', 'Another question'],
+    questionTemplate: ['“{fact}”\n이때 어떤 장면이 기억나?', '“{fact}”\nWhat do you remember about that moment?'],
+    exhausted: ['확인한 내용으로 만들 수 있는 질문을 모두 살펴봤어요. 지금 질문을 직접 바꿔도 좋아요.', 'You have seen the questions for these details. You can edit the current question.'],
+    edited: ['부모가 수정한 질문', 'Edited by a parent'], suggested: ['확인한 내용에 연결된 질문', 'Question linked to a confirmed detail'],
+    read: ['함께 읽기', 'Read together'], back: ['돌아가기', 'Back'],
+    fallback: ['확인한 내용을 원문 그대로 보여드려요.', 'Showing the confirmed passages as written.'],
+    regenerate: ['문단 다시 준비', 'Prepare paragraphs again'], parentTools: ['부모 도구', 'Parent tools'],
+    style: ['사진으로 그림 만들기', 'Illustrate this photo'], artworkReview: ['사람·동물·장면이 맞는지 확인해 주세요. AI 그림은 원본과 다를 수 있어요.', 'Check the people, animals and scene. AI artwork can differ from the original.'],
+    acceptArt: ['이 그림을 읽기에 사용', 'Use this illustration'], rejectArt: ['그림 사용 안 함', 'Do not use illustration'],
+    testimony: ['아이가 해준 말', 'Your child’s words'], testimonyHint: ['기록으로 남기며, 확인된 사실로 바꾸지 않아요. 기억이 안 나도 괜찮아요.', 'Saved as a response, never promoted to fact. It is okay not to remember.'],
+    saveWords: ['말 남기기', 'Save response'], failed: ['완료하지 못했어요. 입력은 남아 있어요. 다시 시도해 주세요. ({message})', 'Could not finish. Your input is kept. Please retry. ({message})'],
+    conflict: ['다른 탭에서 기록이 바뀌었어요. 자동 저장을 멈췄어요. 미저장 내용을 내려받은 뒤 최신 기록을 불러올 수 있어요.', 'Another tab changed this record. Autosave paused. Download your unsaved work, then load the latest record.'],
+    unsaved: ['저장하지 못했어요. 이 탭을 닫기 전에 내용을 내려받으세요.', 'Could not save. Download your work before closing this tab.'],
+    downloadDraft: ['미저장 내용 내려받기', 'Download unsaved work'], reload: ['최신 기록 불러오기', 'Load latest record'],
+    retrySave: ['다시 저장하기', 'Retry save'],
+    saved: ['이 브라우저에 저장됨', 'Saved in this browser'], noPhoto: ['사진은 이 탭에서만 사용할 수 있어요.', 'The original photo is only available in this tab.'],
+    sourceMemo: ['메모', 'Memo'], sourcePhoto: ['사진', 'Photo'], empty: ['아직 내용이 없어요.', 'Nothing here yet.'],
+    translation: ['새 화면 문구는 한국어·영어를 지원해요. 다른 언어에서는 영어로 표시돼요.', 'New workflow labels use English when a translation is unavailable.'],
+    decision: ['확인 변경', 'Review changed'], inclusion: ['사용 변경', 'Inclusion changed'], input: ['입력 변경', 'Input changed'],
+    'migrate-v1': ['이전 기록 가져오기', 'Previous record imported'],
+    library: ['보관한 이야기', 'Saved stories'], saveBook: ['이 기기에 완성본 보관', 'Save this book on this device'],
+    bookSaved: ['그림과 함께 이 기기에 보관했어요.', 'Saved on this device with its available illustration.'],
+    bookSavedText: ['이 기기에 글 완성본을 보관했어요. 그림은 포함되지 않았어요.', 'Saved the text on this device. No illustration was included.'],
+    bookPolicy: ['선택한 완성본과 그림은 삭제할 때까지 보관해요. 브라우저 데이터 정리로 사라질 수 있어요. 다른 기기로 자동 전달되지는 않아요.', 'Saved books remain until deleted, but browser data cleanup may remove them. They do not sync to other devices.'],
+    deleteBook: ['이 보관본 삭제', 'Delete this saved book'], deleteAll: ['모든 로컬 기록 삭제', 'Delete all local records'],
+    deleteConfirm: ['이 브라우저의 현재 기록과 모든 보관본을 삭제할까요?', 'Delete the current record and all saved books in this browser?'],
+    past: ['보관 당시의 이야기 — 현재 기록과 별개예요', 'Saved snapshot — separate from your current record'],
+    export: ['완성본 HTML 내보내기', 'Export reading HTML'], exportHint: ['이야기·질문·확인한 그림만 포함해요. 원본 사진·메모·전체 근거·아이의 말은 제외해요. 읽기용 파일이며 전체 검증 기록은 아니에요. 전달한 파일은 앱에서 회수할 수 없어요.', 'Includes story, question and approved artwork only. Excludes original photo, memo, full sources and child responses. This is a reading copy, not an audit record. Shared files cannot be recalled.'],
+    download: ['이 내용으로 파일 만들기', 'Download this reading copy'], cancel: ['취소', 'Cancel'], textOnly: ['그림 없이 내보내기', 'Export without artwork']
+  };
+  window.TawCopy = function (key, lang, vars = {}) {
+    let text = strings[key]?.[lang === 'ko' ? 0 : 1] || key;
+    for (const [k, v] of Object.entries(vars)) text = text.split('{' + k + '}').join(String(v));
+    return text;
+  };
+})();

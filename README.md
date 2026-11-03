@@ -4,29 +4,41 @@
 
 *Bedtime, in the language your family speaks at home.*
 
-A PWA bedtime handoff for families. The parent who spent the day with the child captures one photo and a ~10-second voice memo. Muse Spark proposes fact candidates with provenance (photo/memo) and risk grades; the capturing parent confirms or rejects each candidate (Gate 1). From confirmed facts only, the app composes:
+A PWA bedtime handoff for families. A parent adds a memo and an optional photo or voice recording, reviews source passages, and chooses which confirmed details to use. From those selected details, the app prepares:
 
-1. A briefing for the parent who missed the day.
-2. One question card built from an "Unknown" that the evidence could not settle.
-3. An illustrated bedtime page (Muse Image restyles the family's real photo) whose sentences cite confirmed fact IDs.
+1. A short briefing for the parent who missed the day.
+2. A contextual recall question that the parent can edit.
+3. A reading page that preserves the selected memo wording, with optional parent-reviewed artwork.
 
 The child's bedtime answer is written down by the parent and saved as testimony, never promoted to fact.
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
-## 60-Second Judge Path
+## Reviewed workflow (v17)
 
-**Live URL:** https://tuck-and-whisper.pages.dev
+The new workflow separates confirmation from story inclusion. Confirm only the memo passages you need; unopened photo observations remain unused. Confirmed cards have a **Use in this story** checkbox. Photo observations, when explicitly used, appear separately in a collapsed source section, not woven into the memoir.
 
-Sample mode requires **no API key of yours**. Extraction replays a real recorded Muse Spark run, and briefing/page composition still calls Muse Spark live through the project's Worker — so the whole flow is verifiable without any setup:
+1. Enter a memo (photo optional), or explore the synthetic sample.
+2. Confirm source passages; skip anything you do not want to review.
+3. Prepare the selected details. The briefing selector proposes IDs only. Story text preserves all selected memo excerpts in source order; no model-written causal links or emotions are accepted.
+4. Edit the contextual recall question if desired, then read together.
+5. To illustrate a photo, confirm its people/animal connections and review the generated image before using it. Partial identity confirmation does not enable the whole image.
 
-1. Open https://tuck-and-whisper.pages.dev.
-2. Tap **Load sample day**.
-3. Review the candidate facts at Gate 1: reject one candidate and confirm the rest.
-4. Open the preview: the briefing and the question card cite confirmed facts only. The question card is manual — pick premise chips, then tap **Draft the question**.
-5. View the bedtime page: sentences cite only confirmed fact IDs, and the rejected candidate never appears.
+Original photos remain session-only. Text records use transactional IndexedDB, with explicit cross-tab conflict recovery. v1 localStorage is read without overwriting it: prior decisions survive, all new inclusion choices start off, and old generated prose is historical only. New UI copy is reviewed in Korean and English; other languages fall back to English. This is a change to the v15 generation/data contracts, not a cosmetic patch.
 
-Note: sample mode carries **no photo and no stylization** — those need a real capture. The briefing, question card, and page sentences still run live through the project's Worker.
+### Local books and reading exports (v17)
+
+Use **Save this book on this device** to store a completed text/approved-artwork snapshot. Saved books are explicitly dated snapshots; editing the current day never silently rewrites them. Original photos remain session-only. Individual deletion preserves the current day; delete-all also removes the preserved v1 record. Storage is local to this browser and can be lost through browser cleanup.
+
+**Export reading HTML** previews the exact reading copy, with an optional text-only choice. The self-contained file has no scripts, tracking, or external assets. It includes only the selected story, question and approved artwork, not the original photo, standalone original memo, audit history or child responses. Story excerpts can naturally contain words from the memo. The recipient receives a reading copy, not a complete audit record.
+
+Dependent memo openings such as “왜냐하면” are joined to an adjacent literal source passage before confirmation. This is a narrow, tested Korean/English grouping rule, not a universal semantic classifier. The initial reading mode preserves the parent's wording, including typos; general creative paraphrasing is deliberately deferred.
+
+### Validation
+
+Run `npm ci` then `npm test` (Chrome installed), or `node tests/harness.mjs`. Browser tests stub model calls; they do not certify live model quality, accessibility with a screen reader, or actual parent/child usability. `node tests/ds1-concurrency.test.mjs` runs the five DS-1 concurrency scenarios against the new browser UI. Original v15 harnesses are retained in `tests/legacy-v15/` solely as historical baselines; they are not v2 release evidence.
+
+The older design/cost notes below describe v15 unless explicitly updated. v16/v17 use different requests, so v15 per-night prices are not measurements of this version.
 
 ## What It Is & The Problem
 

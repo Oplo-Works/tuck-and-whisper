@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#14161d">
+<title>Tuck and Whisper</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root{--bg:#14161d;--card:#1e212b;--line:#2c303e;--text:#eceaf2;--dim:#9aa0ae;--accent:#f2c063;--accent2:#8fd6ae;--danger:#e08a8a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}
+  header{padding:24px 20px 4px;text-align:center}
+  header .moon{font-size:36px}
+  header h1{margin:6px 0 2px;font-size:22px;letter-spacing:-.3px}
+  header p{margin:0;color:var(--dim);font-style:italic}
+  main{max-width:640px;margin:0 auto;padding:16px}
+  section[hidden]{display:none}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .hint{color:var(--dim);font-size:13px;margin:4px 0}
+  .notice{color:var(--accent);font-size:13px;background:rgba(242,192,99,.08);border:1px solid rgba(242,192,99,.4);border-radius:10px;padding:8px 12px;margin:8px 0}
+  .error{color:var(--danger);font-size:13px;background:rgba(224,138,138,.08);border:1px solid rgba(224,138,138,.5);border-radius:10px;padding:8px 12px;margin:8px 0}
+  details.debug{margin:8px 0;color:var(--dim);font-size:12px}
+  details.debug summary{cursor:pointer}
+  details.debug pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;max-height:220px;overflow:auto;color:var(--dim);font-size:11px;margin:6px 0 0}
+  label{display:block;font-size:13px;color:var(--dim);margin:12px 0 4px}
+  input[type=file]{width:100%;font-size:14px;font-family:inherit}
+  input[type="file"]::file-selector-button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font:inherit;margin-right:8px;cursor:pointer}
+  textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:10px;font-size:15px;font-family:inherit;resize:vertical}
+  button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:14px;margin:4px 6px 4px 0;cursor:pointer}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#14161d;font-weight:600}
+  .memo-readonly{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap}
+  .photo-placeholder{border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--dim);font-size:13px;margin:8px 0}
+  .photo-thumb{max-width:100%;max-height:220px;border-radius:10px;display:block;margin:8px 0}
+  .candidate-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
+  .candidate-card.grade-b{border-left:4px solid var(--accent)}
+  .candidate-card.is-confirmed,.candidate-card.is-rejected{opacity:.78;padding:8px}
+  .candidate-card.is-rejected{border-left:4px solid var(--danger)}
+  .candidate-card.is-confirmed .card-buttons button:not(.primary),.candidate-card.is-rejected .card-buttons button:not(.primary){opacity:.45}
+  .candidate-text{margin:0;font-size:15px}
+  .chips{margin:8px 0 2px}
+  .chip{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin-right:4px;color:var(--dim)}
+  .chip-grade-b{color:var(--accent);border-color:var(--accent)}
+  .chip-confirmed{color:var(--accent2);border-color:var(--accent2)}
+  .chip-rejected{color:var(--danger);border-color:var(--danger)}
+  .count{font-size:15px;font-weight:600;margin:8px 0 12px;color:var(--accent)}
+  ol{padding-left:0;list-style:none;margin:0}
+  .confirmed-item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;margin:6px 0}
+  .sticky-actions{position:sticky;bottom:0;z-index:1;background:var(--card);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))}
+  #premise-details{margin:12px 0 4px}
+  #premise-details summary{font-size:13px;color:var(--dim);cursor:pointer}
+  .card h3{margin:14px 0 4px;font-size:14px}
+  select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:8px;font-size:14px}
+  .briefing-line{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
+  .fact-detail{margin-top:6px;color:var(--dim);font-size:13px;background:var(--bg);border-radius:8px;padding:8px}
+  .chip-fact{cursor:pointer}
+  .chip-premise-on{color:var(--accent2);border-color:var(--accent2)}
+  .provenance{margin-top:6px;color:var(--dim);font-size:13px;opacity:.72;background:none;border:0;padding:2px 0;white-space:pre-wrap}
+  #page-sentences .candidate-text{font-size:19px}
+  .testimony-item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0;font-size:14px}
+  .testimony-time{color:var(--dim);font-size:11px;margin-right:8px}
+  input[type=text]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px;font-size:14px}
+  footer{text-align:center;color:var(--dim);font-size:12px;padding:12px 0 32px}
+  .confirm-overlay{position:fixed;inset:0;background:rgba(20,22,29,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .confirm-overlay[hidden]{display:none}
+  .confirm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%}
+  .confirm-card p{margin:0 0 12px;font-size:15px}
+  .recall-question{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;font-size:16px}
+  header select{display:block;width:auto;margin:8px auto 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="moon">🌙</div>
+  <h1>Tuck and Whisper</h1>
+  <p>You missed the moment. You don't have to miss the story.</p>
+  <select id="lang-select" aria-label="Language"></select>
+</header>
+<main>
+
+  <!-- 화면 1: Capture -->
+  <section id="screen-capture">
+    <div class="card">
+      <h2 data-i18n="capture.title">오늘의 하루</h2>
+      <p class="hint" data-i18n="capture.hint">사진 한 장과 짧은 메모. 사진은 저장되지 않는다.</p>
+      <label for="photo-input" data-i18n="capture.photoLabel">사진 (갤러리에서 선택)</label>
+      <input type="file" id="photo-input" accept="image/*">
+      <div id="photo-status" class="hint"></div>
+      <label for="memo-input" data-i18n="capture.memoLabel">메모</label>
+      <textarea id="memo-input" rows="4" data-i18n-ph="capture.memoPlaceholder" placeholder="예: 한국 할아버지 집에서, 태어난 지 한 달 된 강아지 들이랑 밭길에서 놀았어."></textarea>
+      <label for="voice-input" data-i18n="capture.voiceLabel">음성 메모 (녹음 파일 — m4a 그대로 선택해도 된다)</label>
+      <input type="file" id="voice-input" accept="audio/*,.m4a">
+      <div>
+        <button id="transcribe-btn" disabled data-i18n="capture.transcribe">음성으로 메모 채우기</button>
+      </div>
+      <div id="voice-status" class="hint"></div>
+      <div>
+        <button id="extract-btn" disabled data-i18n="capture.extract">추출</button>
+        <button id="load-sample-btn" class="primary" data-i18n="capture.loadSample">Load sample day</button>
+      </div>
+      <p class="hint" data-i18n="capture.needBoth">사진과 메모가 모두 있어야 추출할 수 있다.</p>
+      <div id="capture-notice" class="notice" hidden></div>
+      <div id="capture-error" class="error" hidden></div>
+      <details id="debug-details" class="debug" hidden>
+        <summary data-i18n="debug.summary">디버그 (개발자용)</summary>
+        <pre id="debug-raw"></pre>
+      </details>
+      <div>
+        <button id="back-to-gate1-btn" hidden data-i18n="capture.backToGate1">← Gate 1 (검토 계속)</button>
+        <button id="new-day-capture-btn" data-i18n="newDay.button">새 하루 시작</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 2: Gate 1 (사실 확인) -->
+  <section id="screen-gate1" hidden>
+    <div class="card">
+      <h2 data-i18n="gate1.title">사실 확인 (Gate 1)</h2>
+      <span class="chip" id="gate1-mode"></span>
+      <div id="gate1-photo-area"></div>
+      <div id="gate1-memo" class="memo-readonly"></div>
+      <p id="gate1-status" class="hint"></p>
+      <div>
+        <button id="batch-confirm-btn"></button>
+        <button id="goto-confirmed-btn" data-i18n="gate1.gotoConfirmed">확정 목록 보기</button>
+        <button id="edit-memo-btn" data-i18n="gate1.editMemo">메모 수정</button>
+        <button id="new-day-gate1-btn" data-i18n="newDay.button">새 하루 시작</button>
+      </div>
+      <details id="gate1-debug" class="debug" hidden>
+        <summary data-i18n="debug.malformed">디버그: 형식 깨진 항목 (개발자용)</summary>
+        <pre id="gate1-debug-body"></pre>
+      </details>
+    </div>
+    <div id="unknown-section" class="card">
+      <h2 data-i18n="gate1.notKnown">Not known yet</h2>
+      <ul id="unknown-list" style="margin:0;padding-left:18px;color:var(--dim);font-size:14px"></ul>
+    </div>
+    <div id="candidate-list"></div>
+    <div id="gate1-empty" class="notice" hidden data-i18n="gate1.empty">후보가 없다 — 추출 결과가 없거나 메모 변경으로 무효화되었다.</div>
+  </section>
+
+  <!-- 화면 3: 확정 목록 -->
+  <section id="screen-confirmed" hidden>
+    <div class="card">
+      <h2 data-i18n="confirmed.title">확정 목록</h2>
+      <p class="hint" data-i18n="confirmed.hint">여기는 확정한 사실만 보인다 — 거절·미결정은 닿지 않는다.</p>
+      <div id="confirmed-count" class="count"></div>
+      <ol id="confirmed-list"></ol>
+      <div id="confirmed-empty" class="notice" hidden data-i18n="confirmed.empty">확정된 사실이 아직 없다.</div>
+      <div class="sticky-actions">
+        <button id="back-to-gate1-from-confirmed-btn" data-i18n="confirmed.back">← Gate 1</button>
+        <button id="open-preview-btn" class="primary" data-i18n="confirmed.makePreview">프리뷰 만들기</button>
+        <button id="new-day-confirmed-btn" data-i18n="newDay.button">새 하루 시작</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 4: 프리뷰 (브리핑 + 질문 카드) -->
+  <section id="screen-preview" hidden>
+    <div class="card">
+      <h2 data-i18n="preview.title">취침 전 프리뷰</h2>
+      <span class="chip" id="preview-mode"></span>
+      <div id="preview-no-facts" class="notice" hidden data-i18n="preview.noFacts">합성할 사실이 없다 — 모든 후보를 거절했다.</div>
+      <div id="preview-main">
+        <div id="preview-fallback-notice" class="notice" hidden data-i18n="preview.fallback">오늘은 꾸밈없이, 확정한 사실 그대로예요</div>
+        <p id="preview-synth-status" class="hint"></p>
+        <div id="preview-error" class="error" hidden></div>
+        <details id="preview-debug" class="debug" hidden>
+          <summary data-i18n="debug.raw">디버그: 모델 원문 (개발자용)</summary>
+          <pre id="preview-debug-body"></pre>
+        </details>
+        <h3 data-i18n="preview.briefing">브리핑</h3>
+        <div id="briefing-lines"></div>
+        <p id="briefing-empty-hint" class="hint" hidden data-i18n="preview.briefingEmpty">아직 브리핑이 없다.</p>
+        <button id="resynthesize-btn" data-i18n="preview.resynthesize">다시 합성</button>
+        <h3 data-i18n="preview.questionCard">질문 카드</h3>
+        <label for="question-unknown" data-i18n="preview.unknownLabel">물어볼 unknown</label>
+        <select id="question-unknown"></select>
+        <details id="premise-details">
+          <summary data-i18n="preview.premiseLabel">전제가 될 확정 사실 (안 골라도 된다 — 탭으로 고른다)</summary>
+          <div id="premise-chips" class="chips"></div>
+        </details>
+        <button id="draft-btn" data-i18n="preview.draft">질문 초안 만들기</button>
+        <textarea id="question-text" rows="2" readonly data-i18n-ph="preview.questionPlaceholder" placeholder="초안을 만들면 여기서 수정할 수 있다"></textarea>
+        <p id="question-card-meta" class="hint"></p>
+        <div class="sticky-actions">
+          <button id="open-bedtime-btn" class="primary" data-i18n="preview.openBedtime">취침 페이지</button>
+        </div>
+      </div>
+      <div>
+        <button id="back-to-confirmed-btn" data-i18n="preview.back">← 확정 목록</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 5: 취침 페이지 (문장·스타일화·증언) -->
+  <section id="screen-bedtime" hidden>
+    <div class="card">
+      <h2 data-i18n="bedtime.title">취침 페이지</h2>
+      <span class="chip" id="bedtime-mode"></span>
+      <div id="bedtime-no-facts" class="notice" hidden data-i18n="preview.noFacts">합성할 사실이 없다 — 모든 후보를 거절했다.</div>
+      <div id="bedtime-main">
+        <div id="bedtime-image-area"></div>
+        <div id="bedtime-fallback-notice" class="notice" hidden data-i18n="preview.fallback">오늘은 꾸밈없이, 확정한 사실 그대로예요</div>
+        <p id="bedtime-synth-status" class="hint"></p>
+        <div id="bedtime-error" class="error" hidden></div>
+        <details id="bedtime-debug" class="debug" hidden>
+          <summary data-i18n="debug.raw">디버그: 모델 원문 (개발자용)</summary>
+          <pre id="bedtime-debug-body"></pre>
+        </details>
+        <h3 data-i18n="bedtime.story">오늘 이야기</h3>
+        <div id="page-sentences"></div>
+        <p id="page-empty-hint" class="hint" hidden data-i18n="bedtime.pageEmpty">아직 페이지 문장이 없다.</p>
+        <h3 data-i18n="bedtime.questionCard">질문 카드</h3>
+        <div id="bedtime-question"></div>
+        <button id="recompose-btn" data-i18n="bedtime.recompose">다시 합성</button>
+        <h3 data-i18n="bedtime.testimony">증언</h3>
+        <p class="hint" data-i18n="bedtime.testimonyHint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
+        <input type="text" id="testimony-input" data-i18n-ph="bedtime.testimonyPlaceholder" placeholder="아이의 대답 한 마디">
+        <button id="save-testimony-btn" data-i18n="bedtime.save">기록</button>
+        <div id="testimony-list"></div>
+      </div>
+      <div>
+        <button id="back-to-preview-btn" data-i18n="bedtime.back">← 프리뷰</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 6: 프리뷰 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
+  <section id="screen-preview-restricted" hidden>
+    <div class="card">
+      <h2 data-i18n="preview.title">취침 전 프리뷰</h2>
+      <span class="chip" id="preview-restricted-mode"></span>
+      <div id="preview-restricted-photo-area"></div>
+      <div class="notice" data-i18n="restricted.banner">오늘은 사진과 질문이 먼저 도착했어요</div>
+      <p class="recall-question" id="preview-restricted-question"></p>
+      <div>
+        <button id="open-bedtime-restricted-btn" class="primary" data-i18n="preview.openBedtime">취침 페이지</button>
+        <button id="back-to-confirmed-from-restricted-btn" data-i18n="preview.back">← 확정 목록</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 7: 취침 페이지 (제한 모드 — PHOTO_PROMPT_ONLY, S8) -->
+  <section id="screen-bedtime-restricted" hidden>
+    <div class="card">
+      <h2 data-i18n="bedtime.title">취침 페이지</h2>
+      <span class="chip" id="bedtime-restricted-mode"></span>
+      <div id="bedtime-restricted-image-area"></div>
+      <div class="notice" data-i18n="restricted.banner">오늘은 사진과 질문이 먼저 도착했어요</div>
+      <h3 data-i18n="restricted.question">질문</h3>
+      <p class="recall-question" id="bedtime-restricted-question"></p>
+      <h3 data-i18n="bedtime.testimony">증언</h3>
+      <p class="hint" data-i18n="bedtime.testimonyHint">아이가 대답한 말은 기록일 뿐이다 — 사실로 승격되지 않는다.</p>
+      <input type="text" id="testimony-input-restricted" data-i18n-ph="bedtime.testimonyPlaceholder" placeholder="아이의 대답 한 마디">
+      <button id="save-testimony-btn-restricted" data-i18n="bedtime.save">기록</button>
+      <div id="testimony-list-restricted"></div>
+      <div>
+        <button id="back-to-preview-from-restricted-btn" data-i18n="bedtime.back">← 프리뷰</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- 새 하루 확인 모달 -->
+<div id="new-day-confirm-overlay" class="confirm-overlay" hidden>
+  <div class="confirm-card">
+    <p data-i18n="newDay.confirmText">지금 하루의 후보와 결정이 지워져요. 새 하루를 시작할까요?</p>
+    <div>
+      <button id="new-day-confirm-start-btn" class="primary" data-i18n="newDay.start">시작</button>
+      <button id="new-day-confirm-cancel-btn" data-i18n="newDay.cancel">취소</button>
+    </div>
+  </div>
+</div>
+<footer>build: ui-polish (shell v15)</footer>
+<script src="core.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
