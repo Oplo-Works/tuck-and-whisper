@@ -202,6 +202,13 @@
     }
   }
   function render() {
+    let next = running.extract || running.story || running.briefing ? 'busy' :
+      !record.memoText.trim() ? 'nextCapture' : !record.candidates.length ? 'nextExtract' :
+      !W.canPrepare(record) ? 'nextConfirm' : !W.prepared(record) ? 'nextPrepare' :
+      screen === 'bedtime' ? 'nextSave' : 'nextRead';
+    if (screen === 'library') next = 'nextLibrary';
+    if (blocked) next = conflicted ? 'conflict' : corrupted ? 'corrupt' : 'unsaved';
+    $('next-action').textContent = t(next);
     $('extract-btn').disabled = !!running.extract || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
     $('nav-review').disabled = !record.candidates.length;
@@ -246,6 +253,7 @@
   async function extract() {
     if (running.extract || !record.memoText.trim()) return;
     const token = jobs.begin('extract'), memo = record.memoText, file = photoFile;
+    record = W.submit(record); persist();
     running.extract = true; message(t('busy')); render();
     try {
       const data = file ? await API.photo(file) : null;
@@ -264,11 +272,12 @@
       const facts = W.used(start).filter(c => c.source === 'memo');
       const ids = await API.arrange(kind, facts);
       if (!jobs.current(token)) return;
-      record = Object.assign({}, record, { [kind]: W.compose(start, kind, ids, false) }); if (kind === 'story') clearParagraphArt(); persist();
+      record = Object.assign({}, record, { [kind]: W.compose(start, kind, ids, false) }); if (kind === 'story') { clearParagraphArt(); record = W.bookDetails(record); } persist();
     } catch (e) {
       if (!jobs.current(token)) return;
       // Retain valid prior work; first failure falls back to source passages.
       if (!W.validOutput(record, record[kind])) { record = Object.assign({}, record, { [kind]: W.compose(start, kind, null, true) }); if (kind === 'story') clearParagraphArt(); }
+      if (kind === 'story') record = W.bookDetails(record);
       statuses[kind] = t('fallback'); persist();
     } finally { if (jobs.current(token)) { running[kind] = false; render(); } }
   }
@@ -390,6 +399,7 @@
     // Extension boundary for local books. No service credentials or mutable globals exposed.
     if (window.TawBooksUI) window.TawBooksUI.init({ getRecord: () => record, getDB: () => db, getArt: () => W.imageAllowed(record) ? acceptedArt : null,
       getParagraphArts: () => W.imageAllowed(record) ? paragraphArt.slice() : [],
+      setBookDetails: patch => { record = W.bookDetails(record, patch); persist(); render(); },
       getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download,
       reset: async () => {
         if (blocked) throw Error('Unsaved changes'); blocked = true;

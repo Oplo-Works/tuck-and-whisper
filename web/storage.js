@@ -1,6 +1,7 @@
 /* Transactional compare-and-swap for tabs. Legacy localStorage is read-only. */
 (function (root) {
   'use strict';
+  const booksAPI = () => typeof module === 'object' ? require('./books.js') : root.TawBooks;
   function open(factory = root.indexedDB) {
     return new Promise((resolve, reject) => {
       const request = factory.open('taw-v2', 1);
@@ -46,7 +47,8 @@
   function books(db) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction('books'), req = tx.objectStore('books').getAll();
-      tx.oncomplete = () => resolve(req.result.sort((a, b) => b.createdAt - a.createdAt)); tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => { try { resolve(req.result.map(booksAPI().normalize).sort(booksAPI().compare)); } catch (e) { reject(e); } };
+      tx.onabort = () => reject(tx.error); tx.onerror = () => {};
     });
   }
   function saveBook(db, book, expected) {
@@ -56,10 +58,20 @@
       req.onerror = () => { failure = failure || req.error; };
       req.onsuccess = () => {
         if (!req.result || req.result.version !== expected || req.result.record.dayId !== book.dayId || req.result.record.contentRevision !== book.revision ||
-            JSON.stringify(req.result.record.story?.lines.map(l => l.text)) !== JSON.stringify(book.lines) || (req.result.record.question?.text || '') !== book.question) {
+            JSON.stringify(req.result.record.story?.lines.map(l => l.text)) !== JSON.stringify(book.lines) || (req.result.record.question?.text || '') !== book.question ||
+            (book.schemaVersion === 2 && ['title', 'eventDate', 'submittedAt'].some(k => booksAPI().metadata(req.result.record)[k] !== book[k]))) {
           conflict = true; tx.abort(); return;
         }
-        try { const add = tx.objectStore('books').add(book); add.onerror = () => { failure = failure || add.error; }; }
+        try {
+          const store = tx.objectStore('books'), all = store.getAll();
+          all.onerror = () => { failure = failure || all.error; };
+          all.onsuccess = () => {
+            // Allocate a durable tie-breaker in the same transaction, even for identical timestamps.
+            book.order = all.result.reduce((max, b) => Math.max(max, Number.isFinite(b.order) ? b.order : b.createdAt || 0), 0) + 1;
+            try { const add = store.add(book); add.onerror = () => { failure = failure || add.error; }; }
+            catch (e) { failure = e; tx.abort(); }
+          };
+        }
         catch (e) { failure = e; tx.abort(); }
       };
       tx.oncomplete = () => resolve(book.id);

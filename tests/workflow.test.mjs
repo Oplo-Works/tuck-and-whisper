@@ -118,3 +118,29 @@ test('sanitize rejects malformed testimony, history and unknown entries instead 
   }
   const noUnknowns = clone(); delete noUnknowns.unknowns; assert.throws(() => W.sanitize(noUnknowns));
 });
+
+test('metadata uses confirmed story only; optional fields, edits and midnight keep content intact', () => {
+  let r = W.input(W.create(), 'UNCONFIRMED_SECRET. 확정된 하루.');
+  r = W.submit(r, new Date(2026, 10, 2, 23, 59).getTime());
+  r = W.extract(r, { candidates: ['UNCONFIRMED_SECRET.', '확정된 하루.'].map(text => ({ text, quote: text, source: 'memo', grade: 'C' })) });
+  r = W.prepare(W.decide(r, r.candidates[1].id, 'confirmed'));
+  r.story = W.compose(r, 'story', null, false); r.testimony.push({ text: 'PRIVATE_RESPONSE', at: 1 });
+  r = W.bookDetails(r);
+  assert.equal(r.title, '확정된 하루.'); assert.equal(r.eventDate, '2026-11-02');
+  const story = JSON.stringify(r.story), title = r.title;
+  r = W.bookDetails(r, { eventDate: '2026-10-30' });
+  assert.equal(r.title, title); assert.equal(JSON.stringify(r.story), story);
+  assert.equal(W.submit(r, new Date(2026, 10, 3).getTime()).submittedAt, r.submittedAt);
+  assert.deepEqual(W.sanitize(r), r);
+  r = W.bookDetails(r, { title: '부모가 고친 제목' });
+  assert.equal(W.sanitize(r).title, '부모가 고친 제목');
+  r = W.bookDetails(r, { title: '', eventDate: '' });
+  assert.match(r.title, /2026-11-02/); assert.equal(r.eventDate, '2026-11-02');
+  assert.equal(JSON.stringify(r.story), story);
+  assert.equal(W.validDate('2026-02-30'), false);
+  delete r.eventDate; delete r.title; delete r.titleRevision;
+  const restored = W.sanitize(r);
+  assert.equal(restored.eventDate, '2026-11-02'); assert.equal(restored.title, title);
+  const unused = W.include(restored, restored.candidates[1].id, false);
+  assert.doesNotMatch(W.bookMetadata(unused).title, /확정된|UNCONFIRMED|PRIVATE/);
+});

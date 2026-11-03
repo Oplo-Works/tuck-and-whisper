@@ -6,6 +6,8 @@ function deferred() { let resolve; const promise = new Promise(r => resolve = r)
 async function boot(page, hooks = {}) {
   const requests = [];
   await page.addInitScript(() => localStorage.setItem('taw-lang', 'ko'));
+  // Fail closed: every non-local request must be handled by a mock registered below.
+  await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
   await page.route('https://taw-meta-proxy.minkyuthebuilder.workers.dev/**', async route => {
     const req = route.request(), body = req.postDataJSON(); requests.push({ url: req.url(), body });
     if (req.url().endsWith('/api/image')) {
@@ -140,12 +142,12 @@ test('T23 unsaved artwork is not restored but prepared text is', async ({ page }
 test('T24 storage failure cannot display saved-book success', async ({ page }) => {
   await boot(page); await reading(page);
   await page.evaluate(() => { window.TawStorage.saveBook = async () => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); }; });
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('완료하지 못했어요'); await expect(page.locator('#message')).not.toContainText('보관했어요');
+  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('완성본 보관을 확인하지 못했어요'); await expect(page.locator('#book-save-status')).toContainText('Quota exceeded'); await expect(page.locator('#message')).not.toContainText('보관했어요');
 });
 test('T25 individual deletion preserves current record; delete-all clears legacy and books', async ({ page }) => {
   await boot(page); await reading(page); await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
   await page.locator('#nav-capture').click(); await page.locator('#library-btn').click(); page.on('dialog', d => d.accept());
-  await page.getByRole('button', { name: '이 보관본 삭제', exact: true }).click(); await expect(page.locator('#books')).toContainText('아직 내용이 없어요');
+  await page.getByRole('button', { name: '이 보관본 삭제', exact: true }).click(); await expect(page.locator('#books')).toContainText('아직 보관한 이야기가 없어요');
   expect((await stored(page)).memoText).toBe(memo);
   await page.evaluate(() => localStorage.setItem('taw-day-v1', 'legacy-private'));
   await page.locator('#delete-all').click(); await expect(page.locator('#memo-input')).toHaveValue('');
@@ -175,7 +177,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: sample-removed (shell v24)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: core-hardening (shell v25)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -556,4 +558,86 @@ test('v21 a normal record reloads without any recovery banner', async ({ page })
   await expect(page.locator('#storage-warning')).toBeHidden(); await expect(page.locator('#start-fresh')).toBeHidden();
   await expect(page.locator('#memo-input')).toHaveValue('정상 더미 메모'); await expect(page.locator('#library-btn')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('taw-quarantine-v2'))).toBeNull();
+});
+
+async function savedBooks(page) {
+  return page.evaluate(async () => { const db = await window.TawStorage.open(); try { return (await window.TawStorage.books(db)).map(b => ({ ...b, artwork: b.artwork?.size || 0, paragraphs: b.paragraphs.map(p => ({ ...p, artwork: p.artwork?.size || 0 })) })); } finally { db.close(); } });
+}
+for (const kind of ['illustrated', 'text-only', 'mixed']) test('v25 durable day book survives reload, Chrome restart and saved export: ' + kind, async ({ playwright }, testInfo) => {
+  const profile = testInfo.outputPath('chrome-profile');
+  const launch = () => playwright.chromium.launchPersistentContext(profile, { channel: 'chrome', headless: true, baseURL: 'http://127.0.0.1:4173', serviceWorkers: 'block', viewport: { width: 418, height: 900 } });
+  let context = await launch();
+  try {
+    let page = context.pages()[0]; const requests = await boot(page); await review(page, kind !== 'text-only');
+    if (kind !== 'text-only') { await page.locator('#identity-details summary').click(); await page.locator('#identity-people').selectOption('same'); await page.locator('#identity-animals').selectOption('same'); }
+    await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+    await expect(page.locator('#book-title')).toHaveValue(passages[0]);
+    const initial = await stored(page), submittedDate = await page.locator('#event-date').inputValue();
+    expect(submittedDate).toBe(await page.evaluate(at => window.TawWorkflow.localDate(at), initial.submittedAt));
+    await page.locator('#event-date').fill('2026-10-30');
+    await expect(page.locator('#book-title')).toHaveValue(passages[0]);
+    expect((await stored(page)).story.lines).toEqual(initial.story.lines);
+    await page.locator('#book-title').fill('더미 하루의 세 장');
+    if (kind === 'illustrated') { await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3); }
+    if (kind === 'mixed') { await page.locator('#story .para-art button').first().click(); await expect(page.locator('#story .para-art img')).toHaveCount(1); }
+    await page.locator('#testimony-input').fill('PRIVATE_TESTIMONY'); await page.locator('#save-testimony').click();
+    await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+    const expected = (await savedBooks(page))[0], count = kind === 'illustrated' ? 3 : kind === 'mixed' ? 1 : 0;
+    expect(expected.paragraphs.map(p => p.lines).flat()).toEqual(passages);
+    expect(expected.paragraphs.map(p => p.order)).toEqual([0, 1, 2]);
+    expect(expected.paragraphs.filter(p => p.artStatus === 'illustrated')).toHaveLength(count);
+    expect(expected.title).toBe('더미 하루의 세 장'); expect(expected.eventDate).toBe('2026-10-30');
+    expect(expected.submittedAt).toBe(initial.submittedAt); expect(expected.createdAt).toBeGreaterThanOrEqual(initial.submittedAt);
+    if (kind === 'text-only') expect(imageRequests(requests)).toHaveLength(0);
+    await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+    expect((await savedBooks(page))[0]).toEqual(expected);
+    await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+    await expect(page.locator('#reading-title')).toHaveText(expected.title); await expect(page.locator('#reading-date')).toHaveText(expected.eventDate);
+    await context.close(); context = await launch(); page = context.pages()[0]; await boot(page);
+    expect((await savedBooks(page))[0]).toEqual(expected);
+    // Current input changes cannot change the saved book or prevent its export.
+    await page.locator('#memo-input').fill('UNCONFIRMED_NEW_MEMO');
+    await page.locator('#library-btn').click();
+    await expect(page.locator('#books .book-date')).toHaveText(expected.eventDate);
+    await page.locator('#books .card button').first().click();
+    await expect(page.locator('#book-content h3')).toHaveText(expected.title); await expect(page.locator('#book-content img')).toHaveCount(count);
+    const dl = page.waitForEvent('download'); await page.locator('#download-book').click();
+    const download = await dl, file = testInfo.outputPath('saved.html'); await download.saveAs(file);
+    const html = require('node:fs').readFileSync(file, 'utf8');
+    expect(html).toContain('<h1>' + expected.title + '</h1>'); expect(html).toContain('datetime="2026-10-30"');
+    expect((html.match(/data:image\/png;base64,/g) || [])).toHaveLength(count);
+    expect((html.match(/data-paragraph-order=/g) || [])).toHaveLength(3);
+    expect((html.match(/data-art-status="text-only"/g) || [])).toHaveLength(3 - count);
+    const positions = passages.map(p => html.indexOf(p)); expect(positions[0]).toBeGreaterThan(-1); expect(positions[0]).toBeLessThan(positions[1]); expect(positions[1]).toBeLessThan(positions[2]);
+    expect(html).not.toMatch(/PRIVATE_TESTIMONY|UNCONFIRMED_NEW_MEMO|https?:\/\//);
+  } finally { await context.close(); }
+});
+
+test('v25 next actions, empty library, confirmed-only title and optional metadata use the real path', async ({ page }, testInfo) => {
+  await boot(page);
+  await expect(page.locator('nav button')).toHaveText(['① 사진 + 메모 남기기', '② 사실 확인하기 (Gate 1)', '③ 밤에 읽고 이야기하기']);
+  await expect(page.locator('#next-action')).toContainText('사진과 메모');
+  await page.locator('#library-btn').click(); await expect(page.locator('#books')).toContainText('사실을 확인한 뒤');
+  await page.locator('#nav-capture').click(); await page.locator('#memo-input').fill(memo);
+  await expect(page.locator('#next-action')).toContainText('이야기 준비 시작');
+  await page.locator('#extract-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
+  await expect(page.locator('#next-action')).toContainText('맞아요');
+  // Leave the first passage unconfirmed; it must never suggest the title.
+  await page.locator('#memo-candidates').getByRole('button', { name: '맞아요', exact: true }).nth(1).click();
+  await expect(page.locator('#next-action')).toContainText('확인한 내용으로 준비');
+  await page.locator('#prepare-btn').click(); await expect(page.locator('#next-action')).toContainText('함께 읽기');
+  await page.locator('#open-bedtime').click(); await expect(page.locator('#book-title')).toHaveValue(passages[1]);
+  await expect(page.locator('#next-action')).toContainText('완성본을 보관');
+  await page.locator('#book-title').fill(''); await page.locator('#event-date').fill('');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  const book = (await savedBooks(page))[0]; expect(book.title).toContain(book.eventDate); expect(book.lines).toEqual([passages[1]]);
+  await expect(page.locator('#reading-title')).toHaveText(book.title); await expect(page.locator('#reading-date')).toHaveText(book.eventDate);
+  await page.screenshot({ path: testInfo.outputPath('core-hardening-reading.png'), fullPage: true });
+});
+
+test('v25 readback detects lost text and offers retry', async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await page.evaluate(() => { const original = window.TawStorage.books; window.TawStorage.books = async db => { const books = await original(db); books[0].paragraphs[0].lines[0] = 'CORRUPT'; return books; }; });
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('Book verification failed');
+  await expect(page.locator('#book-save-status')).toContainText('다시 보관'); await expect(page.locator('#message')).not.toContainText('보관했어요');
 });

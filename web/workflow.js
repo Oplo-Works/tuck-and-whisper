@@ -7,8 +7,42 @@
   const copy = value => JSON.parse(JSON.stringify(value));
   const states = ['undecided', 'confirmed', 'rejected'];
   const relations = ['unconfirmed', 'same', 'absent', 'different', 'unsure'];
+  function localDate(at = Date.now()) {
+    const d = new Date(at);
+    return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+  }
+  function validDate(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  }
+  function suggestTitle(lines, date) {
+    const text = (lines.find(l => typeof l === 'string' && l.trim()) || '').trim().replace(/\s+/g, ' ');
+    const chars = Array.from(text);
+    return text ? chars.slice(0, 80).join('') + (chars.length > 80 ? '…' : '') : 'Tuck and Whisper · ' + date;
+  }
+  function submit(r, at = Date.now()) {
+    if (Number.isFinite(r.submittedAt)) return r;
+    return Object.assign({}, r, { submittedAt: at, eventDate: validDate(r.eventDate) ? r.eventDate : localDate(at) });
+  }
+  function bookMetadata(r) {
+    const submittedAt = Number.isFinite(r.submittedAt) ? r.submittedAt : r.history?.find(h => Number.isFinite(h?.at))?.at ?? Date.now();
+    const eventDate = validDate(r.eventDate) ? r.eventDate : localDate(submittedAt);
+    const title = r.titleRevision === r.contentRevision && typeof r.title === 'string' && r.title.trim()
+      ? r.title.trim() : suggestTitle(validOutput(r, r.story) ? r.story.lines.map(l => l.text) : [], eventDate);
+    return { submittedAt, eventDate, title };
+  }
+  function bookDetails(r, patch = {}) {
+    const meta = bookMetadata(r);
+    const eventDate = Object.hasOwn(patch, 'eventDate') ? (validDate(patch.eventDate) ? patch.eventDate : localDate(meta.submittedAt)) : meta.eventDate;
+    return Object.assign({}, r, meta, {
+      title: typeof patch.title === 'string' ? patch.title.trim() || suggestTitle([], eventDate) : meta.title,
+      eventDate,
+      titleRevision: r.contentRevision
+    });
+  }
   function create() {
     return { schemaVersion: 2, dayId: globalThis.crypto.randomUUID(), mode: 'live', memoText: '',
+      submittedAt: null, eventDate: '', title: '', titleRevision: null,
       sourceRevision: 0, contentRevision: 0, selectedRevision: null, candidates: [], unknowns: [],
       identity: { people: 'unconfirmed', animals: 'unconfirmed' },
       briefing: null, story: null, question: null, testimony: [], history: [], legacy: null };
@@ -19,7 +53,7 @@
   function imageAllowed(r) { return prepared(r) && Object.values(r.identity).every(x => x === 'same' || x === 'absent'); }
   function changed(r, patch, action, before, after) {
     const n = Object.assign({}, r, patch, { contentRevision: r.contentRevision + 1, selectedRevision: null,
-      briefing: null, story: null, question: null });
+      briefing: null, story: null, question: null, title: '', titleRevision: null });
     n.history = r.history.concat({ action, before, after, at: Date.now(), revision: n.contentRevision });
     return n;
   }
@@ -28,6 +62,7 @@
       identity: { people: 'unconfirmed', animals: 'unconfirmed' } }, 'input', r.sourceRevision, r.sourceRevision + 1);
   }
   function extract(r, raw) {
+    r = submit(r);
     const normalized = Legacy.normalizeSpark(raw);
     let candidates = normalized.candidates.map((c, index) => {
       const original = (raw.candidates || []).find(x => x.text === c.text && x.source === c.source) || {};
@@ -187,6 +222,10 @@
     if (!validOutput(n, n.briefing)) n.briefing = null;
     if (!validOutput(n, n.story)) n.story = null;
     if (!validQuestion(n, n.question)) n.question = null;
+    // Optional additive metadata: old v2 records remain readable. Never infer dates from prose.
+    if (Number.isFinite(n.submittedAt) || n.candidates.length) Object.assign(n, bookMetadata(n));
+    if (validOutput(n, n.story)) return bookDetails(n);
+    n.title = ''; n.titleRevision = null;
     return n;
   }
   // Epoch changes only for invalidating events; independent job completions never change it.
@@ -195,6 +234,6 @@
     return { invalidate() { epoch++; }, begin(name) { const seq = (serials.get(name) || 0) + 1; serials.set(name, seq); return { epoch, seq, name }; },
       current(token) { return token.epoch === epoch && token.seq === serials.get(token.name); } };
   }
-  return { create, used, canPrepare, prepared, imageAllowed, input, extract, decide, include, identity, prepare,
+  return { create, localDate, validDate, suggestTitle, submit, bookMetadata, bookDetails, used, canPrepare, prepared, imageAllowed, input, extract, decide, include, identity, prepare,
     compose, validOutput, paragraphs, PARAGRAPH_ART_LIMIT, question, validQuestion, migrate, sanitize, jobs };
 });

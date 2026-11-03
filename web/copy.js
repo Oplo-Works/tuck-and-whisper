@@ -1,6 +1,19 @@
 /* New workflow copy: Korean/English reviewed; other selected languages use English. */
 (function () {
   const strings = {
+    stepCapture: ['① 사진 + 메모 남기기', '① Photo + memo'], stepReview: ['② 사실 확인하기 (Gate 1)', '② Check facts (Gate 1)'], stepRead: ['③ 밤에 읽고 이야기하기', '③ Read and talk tonight'],
+    nextCapture: ['다음: 사진과 메모를 남겨 주세요. 사진이 없어도 메모만으로 시작할 수 있어요.', 'Next: add a photo and memo. A memo alone also works.'],
+    nextExtract: ['다음: 이야기 준비 시작을 눌러 확인할 사실을 받아보세요.', 'Next: select Start preparing to review the facts.'],
+    nextConfirm: ['다음: 사실 확인하기에서 메모 문장을 확인하고, 맞는 문장에 맞아요를 눌러 주세요. 확인한 메모가 하나 이상 있어야 이야기를 준비해요.', 'Next: review a memo sentence and select Confirm. At least one confirmed memo detail is needed to prepare a story.'],
+    nextPrepare: ['다음: 확인한 내용으로 준비를 눌러 주세요.', 'Next: select Prepare selected details.'],
+    nextRead: ['다음: 함께 읽기를 눌러 밤 이야기를 읽고 질문을 나눠요.', 'Next: select Read together to read and talk tonight.'],
+    nextSave: ['다음: 함께 읽고 이야기한 뒤 완성본을 보관해요. 제목과 이야기 날짜는 필요할 때만 고치세요.', 'Next: read and talk, then save this book. Edit its title and event date only if needed.'],
+    nextLibrary: ['다음: 보관한 제목을 눌러 읽거나, ① 사진 + 메모 남기기에서 새 이야기를 시작하세요.', 'Next: open a saved title, or start a story from ① Photo + memo.'],
+    libraryEmpty: ['아직 보관한 이야기가 없어요. ① 사진 + 메모 남기기에서 시작하고, 사실을 확인한 뒤 함께 읽기에서 완성본을 보관해 주세요.', 'No saved stories yet. Start at ① Photo + memo, confirm the facts, then save your book from Read together.'],
+    bookTitle: ['이야기 제목', 'Story title'], eventDate: ['이야기가 일어난 날짜', 'Date the story happened'],
+    bookDetailsHint: ['제목은 확정된 이야기에서 제안해요. 날짜는 처음 제출한 날이에요. 둘 다 필요할 때만 고치고 바로 보관하세요.', 'The title comes from the confirmed story. The date defaults to the first submission day. Edit either only if needed, then save.'],
+    bookSaving: ['완성본을 보관하고 확인하는 중이에요…', 'Saving and verifying this book…'],
+    bookSaveFailed: ['완성본 보관을 확인하지 못했어요. ({reason}) 이 탭을 유지하고 저장 공간을 확인한 뒤 다시 보관해 주세요. HTML로도 내보낼 수 있어요.', 'Could not verify the saved book. ({reason}) Keep this tab open, check available storage and retry saving. You can also export HTML.'],
     captureHint: ['사진과 메모로 오늘의 이야기를 시작해요. 사진이 없어도 메모로 글 이야기를 남길 수 있어요.', 'Start today’s story with a photo and memo. You can also save a text story with a memo alone.'],
     capture: ['오늘 있었던 일', 'Today’s moments'], review: ['이 내용이 맞나요?', 'Does this look right?'],
     preview: ['읽어줄 준비', 'Ready to read'], bedtime: ['함께 읽기', 'Read together'],
@@ -44,6 +57,7 @@
     paraNoPhoto: ['사진을 추가하면 이 단락의 그림이 생겨요.', 'Add a photo and an illustration will be made for this paragraph.'],
     paraSkipped: ['이 단락은 그림 없이 글만 보여줘요.', 'This paragraph is shown as text only.'],
     paraTextOnly: ['그림은 앞부분 단락에만 만들어요. 이 단락은 글만 보여줘요.', 'Only the first paragraphs receive illustrations. This paragraph is text only.'],
+    aiArt: ['AI 일러스트', 'AI illustration'],
     aiArtFromPhoto: ['AI 일러스트 · 사진을 바탕으로 만들었어요', 'AI illustration · made from the photo'],
     aiArtFromText: ['AI 일러스트 · 확정된 이야기를 바탕으로 만들었어요', 'AI illustration · made from the confirmed story'],
     testimony: ['아이가 해준 말', 'Your child’s words'], testimonyHint: ['기록으로 남기며, 확인된 사실로 바꾸지 않아요. 기억이 안 나도 괜찮아요.', 'Saved as a response, never promoted to fact. It is okay not to remember.'],

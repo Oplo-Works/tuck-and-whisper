@@ -62,7 +62,8 @@
   #page-sentences .candidate-text{font-size:19px}
   .testimony-item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0;font-size:14px}
   .testimony-time{color:var(--dim);font-size:11px;margin-right:8px}
-  input[type=text]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px;font-size:14px}
+  input[type=text],input[type=date]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px;font-size:14px}
+  input[type=date]{color-scheme:dark}
   footer{text-align:center;color:var(--dim);font-size:12px;padding:12px 0 32px}
   .confirm-overlay{position:fixed;inset:0;background:rgba(20,22,29,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
   .confirm-overlay[hidden]{display:none}
@@ -84,7 +85,8 @@
 <p id="language-note" class="hint" hidden data-copy="translation"></p>
 <div id="storage-warning" class="error" role="alert" hidden><p id="storage-text"></p><p id="storage-code" class="hint" hidden></p><button id="retry-save" data-copy="retrySave" hidden></button><button id="start-fresh" data-copy="startFresh" hidden></button><button id="download-draft" data-copy="downloadDraft"></button><button id="reload-record" data-copy="reload"></button></div>
 <p id="save-status" class="hint" aria-live="polite"></p><p id="message" role="status" aria-live="polite" class="notice" hidden></p>
-<nav aria-label="Steps"><button id="nav-capture" data-copy="capture"></button><button id="nav-review" data-copy="review"></button><button id="nav-preview" data-copy="preview"></button></nav>
+<nav aria-label="Steps"><button id="nav-capture" data-copy="stepCapture"></button><button id="nav-review" data-copy="stepReview"></button><button id="nav-preview" data-copy="stepRead"></button></nav>
+<p id="next-action" class="notice" role="status"></p>
 <section id="screen-capture"><div class="card"><h2 tabindex="-1" data-copy="capture"></h2>
 <p class="hint" data-copy="captureHint"></p>
 <label for="memo-input" data-copy="memo"></label><textarea id="memo-input" rows="6"></textarea>
@@ -105,16 +107,16 @@
 <h3 data-copy="question"></h3><textarea id="question-text" rows="4" aria-label="Question"></textarea><p id="question-meta" class="hint"></p><button id="another-question" data-copy="another"></button>
 <p class="hint" data-copy="retention"></p><button id="open-bedtime" class="primary" data-copy="read"></button>
 <details class="audit"><summary data-copy="audit"></summary><div id="preview-audit"></div></details></div></section>
-<section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><div id="reading-art"></div><div id="para-art-tools" hidden><button id="para-art-all" data-copy="paraArtAll"></button><p id="para-art-hint" class="hint"></p></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
+<section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><h3 id="reading-title"></h3><p id="reading-date" class="hint"></p><div id="reading-art"></div><div id="para-art-tools" hidden><button id="para-art-all" data-copy="paraArtAll"></button><p id="para-art-hint" class="hint"></p></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
 <h3 data-copy="question"></h3><p id="reading-question" class="recall-question"></p><p class="hint" data-copy="testimonyHint"></p>
 <details><summary data-copy="parentTools"></summary><button id="story-retry" data-copy="regenerate"></button><button id="style-btn" data-copy="style"></button>
 <p id="art-message" class="hint" data-copy="noImage"></p><div id="art-preview"></div><div id="art-approval" hidden><p data-copy="artworkReview"></p><button id="accept-art" data-copy="acceptArt"></button><button id="reject-art" data-copy="rejectArt"></button></div></details>
 <details class="audit"><summary data-copy="audit"></summary><div id="bedtime-audit"></div></details>
 <label for="testimony-input" data-copy="testimony"></label><input type="text" id="testimony-input"><button id="save-testimony" data-copy="saveWords"></button><div id="testimony-list"></div>
-<div id="book-tools" hidden><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook"></button><button id="export-book" data-copy="export"></button></div>
+<div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p id="book-save-status" role="status"></p><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook"></button><button id="export-book" data-copy="export"></button></div>
 </div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><button id="delete-all" data-copy="deleteAll"></button></div></section>
 <dialog id="book-dialog"><form method="dialog"><button data-copy="back"></button></form><p id="book-note"></p><div id="book-content"></div><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
-</main><footer>build: sample-removed (shell v24)</footer>
+</main><footer>build: core-hardening (shell v25)</footer>
 <script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="books.js"></script><script src="books-ui.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="api.js"></script><script src="app.js"></script>
 </body></html>

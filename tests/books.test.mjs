@@ -61,3 +61,61 @@ test('snapshot save refuses a concurrent question edit; individual/all deletion 
   await S.saveBook(db, B.snapshot(r, null, W), version);
   await S.save(db, W.create(), version, true); assert.equal((await S.books(db)).length, 0); assert.equal((await S.load(db)).record.memoText, ''); db.close();
 });
+
+for (const kind of ['illustrated', 'text-only', 'mixed']) test('reopen and export every pair, title and event date: ' + kind, async () => {
+  const factory = new IDBFactory(); let db = await S.open(factory);
+  let r = W.input(W.create(), '첫째 장. 둘째 장. 셋째 장.');
+  r = W.extract(r, { candidates: ['첫째 장.', '둘째 장.', '셋째 장.'].map(text => ({ text, quote: text, source: 'memo', grade: 'C' })) });
+  for (const c of r.candidates) r = W.decide(r, c.id, 'confirmed');
+  r = W.prepare(r); r.story = W.compose(r, 'story', null, false);
+  r = W.bookDetails(r, { eventDate: '2026-10-29', title: '확정한 세 장' });
+  const arts = Array.from({ length: 3 }, (_, i) => kind === 'text-only' || kind === 'mixed' && i === 1 ? null : new Blob(['ART' + i], { type: 'image/png' }));
+  const book = B.snapshot(r, null, W, arts), version = await S.save(db, r, 0);
+  await S.saveBook(db, book, version); db.close(); db = await S.open(factory);
+  const loaded = (await S.books(db))[0]; assert.ok(await B.same(loaded, book));
+  assert.deepEqual(loaded.paragraphs.map(p => p.order), [0, 1, 2]);
+  assert.deepEqual(loaded.paragraphs.map(p => p.artStatus), arts.map(a => a ? 'illustrated' : 'text-only'));
+  const data = arts.map(a => a ? 'data:image/png;base64,YQ==' : '');
+  const html = B.html(loaded, '', 'ko', { art: '그림', note: '' }, data);
+  assert.match(html, /<h1>확정한 세 장<\/h1>/); assert.match(html, /datetime="2026-10-29"/);
+  assert.equal((html.match(/data-paragraph-order=/g) || []).length, 3);
+  const positions = ['첫째 장.', '둘째 장.', '셋째 장.'].map(t => html.indexOf(t));
+  assert.ok(positions[0] < positions[1] && positions[1] < positions[2]);
+  const damaged = structuredClone(loaded); damaged.paragraphs[1].lines[0] = 'changed'; assert.equal(await B.same(damaged, book), false);
+  if (arts[0]) { const badArt = structuredClone(loaded); badArt.paragraphs[0].artwork = new Blob(['FAIL'], { type: 'image/png' }); assert.equal(await B.same(badArt, book), false); }
+  db.close();
+});
+
+test('event dates sort before save time; equal-date order persists even with identical timestamps', async () => {
+  const factory = new IDBFactory(); let db = await S.open(factory), r = record(), version = 0;
+  const saved = [];
+  for (const date of ['2026-11-03', '2026-11-01', '2026-11-01']) {
+    r = W.bookDetails(r, { eventDate: date }); version = await S.save(db, r, version);
+    const book = B.snapshot(r, null, W); book.createdAt = 12345; await S.saveBook(db, book, version); saved.push(book);
+  }
+  db.close(); db = await S.open(factory);
+  assert.deepEqual((await S.books(db)).map(b => b.id), [saved[1].id, saved[2].id, saved[0].id]);
+  assert.deepEqual(saved.map(b => b.order), [1, 2, 3]); db.close();
+});
+
+test('legacy flat and paired books load without rewriting or losing text and art', async () => {
+  const db = await S.open(new IDBFactory()), r = record(); await S.save(db, r, 0);
+  const original = { id: 'old-flat', dayId: r.dayId, revision: r.contentRevision, lines: ['옛 이야기.'], question: '', createdAt: new Date(2025, 1, 2).getTime(), artwork: new Blob(['old-art'], { type: 'image/png' }) };
+  const paired = { ...original, id: 'old-pairs', paragraphs: [{ lines: ['옛 이야기.'], artwork: original.artwork }, { lines: ['글만 있는 장.'], artwork: null }], lines: ['옛 이야기.', '글만 있는 장.'] };
+  await new Promise((resolve, reject) => { const tx = db.transaction('books', 'readwrite'); tx.objectStore('books').add(original); tx.objectStore('books').add(paired); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+  const books = await S.books(db); assert.equal(books.length, 2);
+  for (const b of books) { assert.equal(b.title, '옛 이야기.'); assert.equal(b.eventDate, '2025-02-02'); assert.deepEqual(b.paragraphs.flatMap(p => p.lines), b.lines); }
+  assert.equal(await books[0].artwork.text(), 'old-art'); assert.equal(books[1].paragraphs[1].artStatus, 'text-only');
+  const raw = await new Promise(resolve => { const tx = db.transaction('books'), q = tx.objectStore('books').get('old-flat'); tx.oncomplete = () => resolve(q.result); });
+  assert.equal(raw.title, undefined); assert.equal(raw.paragraphs, undefined); db.close();
+});
+
+test('concurrent metadata edit cannot save a stale title or event date', async () => {
+  const db = await S.open(new IDBFactory()); let r = W.bookDetails(record()), version = await S.save(db, r, 0);
+  const book = B.snapshot(r, null, W);
+  for (const patch of [{ title: '새 제목' }, { eventDate: '2026-09-01' }]) {
+    r = W.bookDetails(r, patch); version = await S.save(db, r, version);
+    await assert.rejects(S.saveBook(db, book, version), { name: 'ConflictError' });
+  }
+  assert.equal((await S.books(db)).length, 0); db.close();
+});
