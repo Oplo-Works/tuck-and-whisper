@@ -41,6 +41,7 @@
     paraArtRedo: ['이 단락 다시 그리기', 'Redraw this paragraph'], paraArtRetry: ['이 단락 그림 다시 시도', 'Retry this paragraph'],
     paraArtFailed: ['그림을 불러오지 못했어요.', 'Could not load this illustration.'],
     paraGate: ['단락 그림을 만들려면, 먼저 이 내용이 맞나요? 화면에서 사진 속 사람·동물이 메모에 나온 대상과 같은지 확인해 주세요.', 'To illustrate paragraphs, first use the review screen to confirm whether the people and animals in the photo match the memo.'],
+    paraNoPhoto: ['사진을 추가하면 이 단락의 그림이 생겨요.', 'Add a photo and an illustration will be made for this paragraph.'],
     paraSkipped: ['이 단락은 그림 없이 글만 보여줘요.', 'This paragraph is shown as text only.'],
     paraTextOnly: ['그림은 앞부분 단락에만 만들어요. 이 단락은 글만 보여줘요.', 'Only the first paragraphs receive illustrations. This paragraph is text only.'],
     aiArtFromPhoto: ['AI 일러스트 · 사진을 바탕으로 만들었어요', 'AI illustration · made from the photo'],

@@ -97,6 +97,13 @@
   // illustration when there is one, otherwise the original photo. A generated
   // paragraph image is never used as an anchor (no chaining).
   function artAnchor() { return acceptedArt || photoData || null; }
+  // Paragraph art is photo-required (v23): a session anchor must exist — the
+  // approved illustration, the loaded photo data, or a selected photo file
+  // that can still be loaded. Text, memos and the single illustration are
+  // unaffected; only paragraph illustrations gain this extra condition on
+  // top of the unchanged identity gate (W.imageAllowed).
+  function hasArtAnchor() { return !!(acceptedArt || photoData || photoFile); }
+  function paragraphArtAllowed() { return W.imageAllowed(record) && hasArtAnchor(); }
   function change(next) { if (next === record) return; invalidate(); record = next; persist(); render(); }
   function show(name) {
     screen = name;
@@ -162,7 +169,7 @@
     const target = $('story'); target.replaceChildren();
     if (!W.validOutput(record, record.story)) return;
     if (record.story.fallback) target.append(node('p', t('fallback'), 'hint'));
-    const allowed = W.imageAllowed(record);
+    const allowed = paragraphArtAllowed();
     for (const p of W.paragraphs(record)) {
       target.append(node('p', p.text));
       const slot = node('div', undefined, 'para-art');
@@ -174,6 +181,9 @@
         slot.append(node('p', t('paraSkipped'), 'hint'));
       } else if (p.index >= W.PARAGRAPH_ART_LIMIT) {
         slot.append(node('p', t('paraTextOnly'), 'hint'));
+      } else if (!hasArtAnchor()) {
+        // No photo in this session: text only, no button, no image call.
+        slot.append(node('p', t('paraNoPhoto'), 'hint'));
       } else if (paragraphFailed[p.index]) {
         slot.append(node('p', t('paraArtFailed'), 'notice'));
         const retry = node('button', t('paraArtRetry')); retry.disabled = !allowed || !!paragraphBusy[p.index];
@@ -208,8 +218,8 @@
     output($('briefing'), record.briefing); renderStory();
     const storyValid = W.validOutput(record, record.story);
     $('para-art-tools').hidden = !storyValid;
-    $('para-art-all').disabled = !W.imageAllowed(record) || paragraphBusy.some(Boolean);
-    $('para-art-hint').textContent = storyValid && !W.imageAllowed(record) ? t('paraGate') : '';
+    $('para-art-all').disabled = !paragraphArtAllowed() || paragraphBusy.some(Boolean);
+    $('para-art-hint').textContent = !storyValid ? '' : !hasArtAnchor() ? t('paraNoPhoto') : !W.imageAllowed(record) ? t('paraGate') : '';
     $('briefing-status').textContent = running.briefing ? t('busy') : (statuses.briefing || '');
     $('story-status').textContent = running.story ? t('busy') : (statuses.story || '');
     $('briefing-retry').disabled = !ready || !!running.briefing; $('story-retry').disabled = !ready || !!running.story;
@@ -289,19 +299,24 @@
   // illustration. A failure marks only that paragraph; the rest are unaffected.
   async function generateParagraphArt(index) {
     const paras = W.paragraphs(record), p = paras[index];
-    if (!p || p.sensitive || index >= W.PARAGRAPH_ART_LIMIT || paragraphBusy[index] || !W.imageAllowed(record)) return;
+    if (!p || p.sensitive || index >= W.PARAGRAPH_ART_LIMIT || paragraphBusy[index] || !paragraphArtAllowed()) return;
     const token = jobs.begin('para' + index), text = p.text;
     paragraphBusy[index] = true; paragraphFailed[index] = false; render();
     try {
       if (photoFile && !photoData && !acceptedArt) photoData = await API.photo(photoFile);
       if (!jobs.current(token)) return;
-      const url = await API.paragraphArt(text, artAnchor());
+      // Blocked before the call: without an anchor no /api/image request
+      // (in particular none with an empty images array) may go out.
+      const anchor = artAnchor();
+      if (!anchor) return;
+      const url = await API.paragraphArt(text, anchor);
       if (!jobs.current(token)) return;
       paragraphArt[index] = url;
     } catch (e) { if (jobs.current(token)) paragraphFailed[index] = true; }
     finally { if (jobs.current(token)) { paragraphBusy[index] = false; render(); } }
   }
   async function generateAllParagraphArt() {
+    if (!paragraphArtAllowed()) return;
     const paras = W.paragraphs(record);
     for (const p of paras) if (!paragraphArt[p.index] && !p.sensitive && p.index < W.PARAGRAPH_ART_LIMIT) await generateParagraphArt(p.index);
   }

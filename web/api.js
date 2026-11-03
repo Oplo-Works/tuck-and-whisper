@@ -51,16 +51,19 @@
   }
   // One image per paragraph. The only story material in the prompt is the
   // paragraph's Gate 1 confirmed passages; the raw memo is never sent. The
-  // anchor, when present, is the single fixed photo-derived reference shared
-  // by every paragraph call (a generated paragraph image is never an anchor).
+  // anchor is required (v23, photo-required paragraph art): it is the single
+  // fixed photo-derived reference shared by every paragraph call (a generated
+  // paragraph image is never an anchor). Without one, no request is sent —
+  // an empty images array never goes out from here.
   async function paragraphArt(paragraphText, anchor) {
+    if (!anchor) throw Error('Photo anchor required');
     const prompt = [
       'Warm watercolor picture-book illustration for one paragraph of a bedtime story.',
       'Draw ONE representative scene from the confirmed passages below. Show only what those passages support; do not invent new events, places, objects or named characters.',
       'Keep the main characters consistent: same faces, hair, clothing colors and age group as the reference image when one is provided. Any background people stay small and out of focus.',
       'Confirmed passages: ' + paragraphText].join('\n');
     const result = await request('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      model: 'muse-image-1.0', prompt, images: anchor ? [{ image_url: anchor }] : [] }) });
+      model: 'muse-image-1.0', prompt, images: [{ image_url: anchor }] }) });
     return imageResult(result);
   }
   async function voice(file, language) {

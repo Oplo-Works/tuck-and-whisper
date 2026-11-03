@@ -175,7 +175,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: paragraph-art (shell v22)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: paragraph-art-photo-required (shell v23)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -506,6 +506,66 @@ test('v22 stage2: six paragraphs are capped at five illustrations, the sixth sta
   await expect(page.locator('#story .para-art').nth(5)).toContainText('글만 보여줘요');
   await expect(page.locator('#story .para-art').nth(5).locator('img')).toHaveCount(0);
   await expect(page.locator('#story')).toContainText(six[5]);
+});
+// v23: paragraph art is photo-required; memo/fact-check/text story are not.
+const imageRequests = requests => requests.filter(r => r.url.endsWith('/api/image'));
+test('v23 (a) without a photo, paragraph slots are text-only with guidance, no image call, and text story/save/export still work', async ({ page }, testInfo) => {
+  const requests = await boot(page); await review(page); // no photo at all
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[0]);
+  await expect(page.locator('#story .para-art')).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
+    await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(0);
+  }
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  await expect(page.locator('#para-art-hint')).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+  expect(imageRequests(requests)).toHaveLength(0); expect(paraPrompts(requests)).toHaveLength(0);
+  // Text-only bookkeeping and export are unaffected by the missing photo.
+  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  const downloadPromise = page.waitForEvent('download'); await page.locator('#export-book').click(); await page.locator('#download-book').click();
+  const download = await downloadPromise; const file = testInfo.outputPath(download.suggestedFilename()); await download.saveAs(file);
+  const html = require('node:fs').readFileSync(file, 'utf8');
+  for (const p of passages) expect(html).toContain(p); expect(html).not.toContain('data:image/');
+  expect(imageRequests(requests)).toHaveLength(0);
+});
+test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no new image call, and a saved book keeps its pairs', async ({ page }) => {
+  const requests = await boot(page); await reading(page, true);
+  await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  const callsBefore = imageRequests(requests).length; expect(callsBefore).toBeGreaterThan(0);
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#photo-status')).toHaveText(''); // original photo is session-only
+  await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[0]); // prepared text story still reads
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  for (let i = 0; i < 3; i++) {
+    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
+    await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(0);
+  }
+  expect(imageRequests(requests)).toHaveLength(callsBefore); // nothing new went out after the anchor vanished
+  // The book saved before the reload keeps every paragraph+illustration pair.
+  await page.locator('#nav-capture').click(); await page.locator('#library-btn').click();
+  await page.locator('#books .card button').first().click(); await expect(page.locator('#book-dialog')).toBeVisible();
+  await expect(page.locator('#book-content img')).toHaveCount(4); // 1 approved single + 3 paragraph illustrations
+  const bookText = await page.locator('#book-content').textContent();
+  const inBook = passages.map(p => bookText.indexOf(p)); expect(inBook[0]).toBeGreaterThan(-1); expect(inBook[0]).toBeLessThan(inBook[1]); expect(inBook[1]).toBeLessThan(inBook[2]);
+});
+test('v23 (d) sample mode has no photo anchor, so its paragraphs stay text-only with guidance and no image call', async ({ page }) => {
+  const requests = await boot(page);
+  await page.locator('#load-sample-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
+  expect((await stored(page)).mode).toBe('sample'); await expect(page.locator('#photo-status')).toHaveText('');
+  for (let i = 0; i < 3; i++) await page.locator('#memo-candidates').getByRole('button', { name: '맞아요', exact: true }).nth(i).click();
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story .para-art')).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
+  }
+  await expect(page.locator('#para-art-all')).toBeDisabled();
+  expect(imageRequests(requests)).toHaveLength(0);
 });
 test('v21 a normal record reloads without any recovery banner', async ({ page }) => {
   await boot(page); await page.locator('#memo-input').fill('정상 더미 메모');
