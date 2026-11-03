@@ -20,17 +20,26 @@
       tx.onerror = () => reject(tx.error);
     });
   }
+  // Non-conflict aborts keep the browser's reason (e.g. QuotaExceededError) as `cause`.
+  function storageError(conflict, message, cause) {
+    const e = Error(message); e.name = conflict ? 'ConflictError' : 'StorageError';
+    if (!conflict && cause) e.cause = cause;
+    return e;
+  }
   function save(db, record, expected, clearBooks = false) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(clearBooks ? ['current', 'books'] : ['current'], 'readwrite');
-      const store = tx.objectStore('current'), req = store.get('day'); let conflict = false;
+      const store = tx.objectStore('current'), req = store.get('day'); let conflict = false, failure = null;
+      req.onerror = () => { failure = failure || req.error; };
       req.onsuccess = () => {
         if ((req.result ? req.result.version : 0) !== expected) { conflict = true; tx.abort(); return; }
-        store.put({ version: expected + 1, record }, 'day');
-        if (clearBooks) tx.objectStore('books').clear();
+        try {
+          const put = store.put({ version: expected + 1, record }, 'day'); put.onerror = () => { failure = failure || put.error; };
+          if (clearBooks) tx.objectStore('books').clear();
+        } catch (e) { failure = e; tx.abort(); }
       };
       tx.oncomplete = () => resolve(expected + 1);
-      tx.onabort = () => { const e = Error(conflict ? 'Conflict' : 'Storage failed'); e.name = conflict ? 'ConflictError' : 'StorageError'; reject(e); };
+      tx.onabort = () => reject(storageError(conflict, conflict ? 'Conflict' : 'Storage failed', failure || tx.error));
       tx.onerror = () => {}; // onabort reports exactly once
     });
   }
@@ -43,16 +52,18 @@
   function saveBook(db, book, expected) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(['current', 'books'], 'readwrite'), req = tx.objectStore('current').get('day');
-      let conflict = false;
+      let conflict = false, failure = null;
+      req.onerror = () => { failure = failure || req.error; };
       req.onsuccess = () => {
         if (!req.result || req.result.version !== expected || req.result.record.dayId !== book.dayId || req.result.record.contentRevision !== book.revision ||
             JSON.stringify(req.result.record.story?.lines.map(l => l.text)) !== JSON.stringify(book.lines) || (req.result.record.question?.text || '') !== book.question) {
           conflict = true; tx.abort(); return;
         }
-        tx.objectStore('books').add(book);
+        try { const add = tx.objectStore('books').add(book); add.onerror = () => { failure = failure || add.error; }; }
+        catch (e) { failure = e; tx.abort(); }
       };
       tx.oncomplete = () => resolve(book.id);
-      tx.onabort = () => { const e = Error(conflict ? 'Record changed; prepare again' : 'Book storage failed'); e.name = conflict ? 'ConflictError' : 'StorageError'; reject(e); };
+      tx.onabort = () => reject(storageError(conflict, conflict ? 'Record changed; prepare again' : 'Book storage failed', failure || tx.error));
       tx.onerror = () => {};
     });
   }

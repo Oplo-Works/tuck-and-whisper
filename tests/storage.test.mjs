@@ -14,3 +14,24 @@ test('a failed write leaves previous data and version intact', async () => {
   await assert.rejects(S.save(db, { marker: 'stale' }, 0), { name: 'ConflictError' });
   assert.deepEqual(await S.load(db), { version: 1, record: { marker: 'original' } }); db.close();
 });
+test('v18: a conflict carries no cause; a non-conflict abort keeps the browser cause and leaves data intact', async () => {
+  const db = await S.open(new IDBFactory()); await S.save(db, { marker: 'original' }, 0);
+  const conflict = await S.save(db, { marker: 'stale' }, 0).catch(e => e);
+  assert.equal(conflict.name, 'ConflictError'); assert.equal(conflict.cause, undefined);
+  // An uncloneable value makes put() throw inside the transaction: a non-version abort.
+  const failed = await S.save(db, { marker: 'bad', fn() {} }, 1).catch(e => e);
+  assert.equal(failed.name, 'StorageError'); assert.equal(failed.message, 'Storage failed');
+  assert.equal(failed.cause?.name, 'DataCloneError');
+  assert.deepEqual(await S.load(db), { version: 1, record: { marker: 'original' } }); db.close();
+});
+test('v18: saveBook non-conflict abort keeps the request error as cause', async () => {
+  const db = await S.open(new IDBFactory());
+  await S.save(db, { dayId: 'd', contentRevision: 1, story: { lines: [{ text: 'a' }] }, question: null }, 0);
+  const book = { id: 'b1', dayId: 'd', revision: 1, lines: ['a'], question: '', createdAt: 1 };
+  assert.equal(await S.saveBook(db, book, 1), 'b1');
+  const failed = await S.saveBook(db, book, 1).catch(e => e);
+  assert.equal(failed.name, 'StorageError'); assert.equal(failed.cause?.name, 'ConstraintError');
+  const conflict = await S.saveBook(db, Object.assign({}, book, { id: 'b2' }), 0).catch(e => e);
+  assert.equal(conflict.name, 'ConflictError'); assert.equal(conflict.cause, undefined);
+  assert.equal((await S.books(db)).length, 1); db.close();
+});

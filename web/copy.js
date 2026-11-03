@@ -39,6 +39,7 @@
     conflict: ['다른 탭에서 기록이 바뀌었어요. 자동 저장을 멈췄어요. 미저장 내용을 내려받은 뒤 최신 기록을 불러올 수 있어요.', 'Another tab changed this record. Autosave paused. Download your unsaved work, then load the latest record.'],
     unsaved: ['저장하지 못했어요. 이 탭을 닫기 전에 내용을 내려받으세요.', 'Could not save. Download your work before closing this tab.'],
     downloadDraft: ['미저장 내용 내려받기', 'Download unsaved work'], reload: ['최신 기록 불러오기', 'Load latest record'],
+    retrySave: ['다시 저장하기', 'Retry save'],
     saved: ['이 브라우저에 저장됨', 'Saved in this browser'], noPhoto: ['사진은 이 탭에서만 사용할 수 있어요.', 'The original photo is only available in this tab.'],
     sourceMemo: ['메모', 'Memo'], sourcePhoto: ['사진', 'Photo'], empty: ['아직 내용이 없어요.', 'Nothing here yet.'],
     translation: ['새 화면 문구는 한국어·영어를 지원해요. 다른 언어에서는 영어로 표시돼요.', 'New workflow labels use English when a translation is unavailable.'],

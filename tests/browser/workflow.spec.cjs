@@ -174,7 +174,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toContainText('shell v17'); await context.close();
+  await expect(page.locator('footer')).toContainText('shell v18'); await context.close();
 });
 test('voice conversion failure recovers, and a late transcript cannot overwrite edited input', async ({ page }) => {
   await boot(page);
@@ -199,4 +199,95 @@ test('photo replacement removes approved old artwork and old identity decisions'
   await page.locator('#nav-capture').click(); await page.locator('#photo-input').setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   expect((await stored(page)).identity).toEqual({ people: 'unconfirmed', animals: 'unconfirmed' });
   await expect(page.locator('#art-preview img')).toHaveCount(0);
+});
+
+// v18: diagnostics and unsaved-only retry. These do not reproduce or fix the field report's root cause.
+function failNextSave(page) {
+  return page.evaluate(() => {
+    const S = window.TawStorage, original = S.save; let pending = true; window.tawSaveCalls = 0;
+    S.save = (...args) => {
+      window.tawSaveCalls++;
+      if (!pending) return original(...args); pending = false;
+      const e = Error('Storage failed'); e.name = 'StorageError'; e.cause = new DOMException('Quota exceeded', 'QuotaExceededError');
+      return Promise.reject(e);
+    };
+  });
+}
+async function failFirstOpen(page) {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('taw-fail-open')) return;
+    sessionStorage.removeItem('taw-fail-open');
+    const original = IDBFactory.prototype.open; let first = true;
+    IDBFactory.prototype.open = function (...args) {
+      if (first && args[0] === 'taw-v2') { first = false; throw new DOMException('Simulated open failure', 'UnknownError'); }
+      return original.apply(this, args);
+    };
+  });
+}
+const unsavedText = '저장하지 못했어요. 이 탭을 닫기 전에 내용을 내려받으세요.', conflictText = '다른 탭에서 기록이 바뀌었어요';
+test('v18 unsaved failure keeps its cause, shows a code, and Retry save stores the current record', async ({ page }) => {
+  const logs = []; page.on('console', m => logs.push(m.text()));
+  await boot(page); await failNextSave(page);
+  await page.locator('#memo-input').fill('저장 실패 후 남은 메모');
+  await expect(page.locator('#storage-text')).toHaveText(unsavedText);
+  await expect(page.locator('#storage-code')).toHaveText('save-failed: StorageError / QuotaExceededError');
+  await expect(page.locator('#retry-save')).toBeVisible(); await expect(page.locator('#download-draft')).toBeVisible(); await expect(page.locator('#reload-record')).toBeVisible();
+  await page.locator('#memo-input').fill('재시도 전에 고친 메모');
+  expect((await stored(page)).memoText).toBe('');
+  await page.locator('#retry-save').click();
+  await expect(page.locator('#storage-warning')).toBeHidden(); await expect(page.locator('#save-status')).toContainText('저장됨');
+  expect((await stored(page)).memoText).toBe('재시도 전에 고친 메모');
+  expect(logs.some(l => l.startsWith('[taw] storage save failed'))).toBe(true);
+  expect(logs.join('\n')).not.toMatch(/저장 실패 후 남은 메모|재시도 전에 고친 메모/);
+});
+test('v18 Retry save switches to the conflict flow when another tab saved meanwhile', async ({ page, context }) => {
+  const logs = []; page.on('console', m => logs.push(m.text()));
+  await boot(page); await failNextSave(page);
+  await page.locator('#memo-input').fill('이 탭의 미저장 내용');
+  await expect(page.locator('#retry-save')).toBeVisible();
+  const other = await context.newPage(); await boot(other);
+  await other.locator('#memo-input').fill('다른 탭이 나중에 저장'); await expect(other.locator('#save-status')).toContainText('저장됨');
+  const before = await page.evaluate(() => window.tawSaveCalls);
+  await page.locator('#retry-save').click();
+  await expect(page.locator('#storage-text')).toContainText(conflictText);
+  // Boundary: the version check stops the retry before any write is attempted (not merely CAS rejecting it).
+  expect(await page.evaluate(() => window.tawSaveCalls)).toBe(before);
+  expect(logs.some(l => l.startsWith('[taw] retry stopped: stored version changed'))).toBe(true);
+  await expect(page.locator('#retry-save')).toBeHidden(); await expect(page.locator('#storage-code')).toBeHidden();
+  await expect(page.locator('#download-draft')).toBeVisible();
+  expect((await stored(page)).memoText).toBe('다른 탭이 나중에 저장');
+  await page.locator('#reload-record').click(); await expect(page.locator('#memo-input')).toHaveValue('다른 탭이 나중에 저장');
+  await expect(page.locator('#storage-warning')).toBeHidden();
+});
+test('v18 conflict banner offers only Download and Load latest, never Retry save', async ({ page, context }) => {
+  await boot(page); const other = await context.newPage(); await boot(other);
+  await other.locator('#memo-input').fill('다른 탭에서 먼저 저장'); await expect(other.locator('#save-status')).toContainText('저장됨');
+  await page.locator('#memo-input').fill('오래된 탭의 내용');
+  await expect(page.locator('#storage-text')).toContainText(conflictText);
+  await expect(page.locator('#retry-save')).toBeHidden(); await expect(page.locator('#storage-code')).toBeHidden();
+  await expect(page.locator('#download-draft')).toBeVisible(); await expect(page.locator('#reload-record')).toBeVisible();
+  expect((await stored(page)).memoText).toBe('다른 탭에서 먼저 저장');
+});
+test('v18 open failure shows the open code; Retry save opens storage and saves into an empty store', async ({ page }) => {
+  await page.addInitScript(() => { if (!sessionStorage.getItem('taw-seen')) { sessionStorage.setItem('taw-seen', '1'); sessionStorage.setItem('taw-fail-open', '1'); } });
+  await failFirstOpen(page); await boot(page);
+  await expect(page.locator('#storage-text')).toHaveText(unsavedText); await expect(page.locator('#storage-code')).toHaveText('open');
+  await page.locator('#memo-input').fill('열기 실패 중 입력');
+  await page.locator('#retry-save').click();
+  await expect(page.locator('#storage-warning')).toBeHidden();
+  expect((await stored(page)).memoText).toBe('열기 실패 중 입력');
+});
+test('v18 after an open failure, Retry save never overwrites an existing stored record', async ({ page }) => {
+  await failFirstOpen(page); await boot(page);
+  await page.locator('#memo-input').fill('이미 저장된 기록'); await expect(page.locator('#save-status')).toContainText('저장됨');
+  await page.evaluate(() => sessionStorage.setItem('taw-fail-open', '1'));
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#storage-code')).toHaveText('open');
+  await page.locator('#memo-input').fill('열기 실패 중 새 입력');
+  await page.evaluate(() => { const S = window.TawStorage, original = S.save; window.tawSaveCalls = 0; S.save = (...a) => { window.tawSaveCalls++; return original(...a); }; });
+  await page.locator('#retry-save').click();
+  await expect(page.locator('#storage-text')).toContainText(conflictText); await expect(page.locator('#retry-save')).toBeHidden();
+  expect(await page.evaluate(() => window.tawSaveCalls)).toBe(0);
+  expect((await stored(page)).memoText).toBe('이미 저장된 기록');
+  await page.locator('#reload-record').click(); await expect(page.locator('#memo-input')).toHaveValue('이미 저장된 기록');
 });

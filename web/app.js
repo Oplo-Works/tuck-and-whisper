@@ -4,24 +4,58 @@
   const W = window.TawWorkflow, S = window.TawStorage, API = window.TawAPI, I = window.TAW_I18N;
   const $ = id => document.getElementById(id), jobs = W.jobs();
   let record = W.create(), db = null, storageVersion = 0, queue = Promise.resolve(), blocked = false;
+  // synced: record descends from storageVersion. conflicted: the banner is the conflict flow (never retried).
+  let synced = false, conflicted = false, retrying = false;
   let photoFile = null, photoData = null, photoURL = null, art = null, acceptedArt = null;
   let screen = 'capture', running = {}, statuses = {}, loaded = false;
   const t = (key, vars) => window.TawCopy(key, I.getLanguage(), vars);
   function node(tag, text, cls) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; }
   function message(text) { $('message').textContent = text; $('message').hidden = !text; }
   function fail(error) { message(t('failed', { message: error.message })); }
-  function storageWarning(conflict) { blocked = true; $('storage-warning').hidden = false; $('storage-text').textContent = t(conflict ? 'conflict' : 'unsaved'); $('save-status').textContent = ''; }
+  // The diagnostic code is supplementary; the requested action stays the unsaved/conflict copy.
+  function storageWarning(conflict, code) {
+    blocked = true; conflicted = conflict; $('storage-warning').hidden = false; $('storage-text').textContent = t(conflict ? 'conflict' : 'unsaved');
+    $('storage-code').textContent = conflict ? '' : code || ''; $('storage-code').hidden = conflict || !code;
+    $('retry-save').hidden = conflict; $('save-status').textContent = '';
+  }
+  // Error names and messages only: never memo, photo or candidate content.
+  function report(stage, error) {
+    const cause = error && error.cause;
+    console.error('[taw] storage ' + stage + ' failed', { stage, name: error && error.name, message: error && error.message,
+      cause: cause ? { name: cause.name, message: cause.message } : null });
+    return stage === 'save' ? 'save-failed: ' + ((error && error.name) || 'Error') + (cause && cause.name ? ' / ' + cause.name : '') : stage;
+  }
   function persist() {
     if (!loaded || blocked || !db) return Promise.resolve(false);
     let snapshot;
-    try { snapshot = W.sanitize(record); } catch (e) { storageWarning(false); return Promise.resolve(false); }
+    try { snapshot = W.sanitize(record); } catch (e) { storageWarning(false, report('sanitize', e)); return Promise.resolve(false); }
     $('save-status').textContent = '';
     queue = queue.then(async () => {
       if (blocked) return false;
       try { storageVersion = await S.save(db, snapshot, storageVersion); $('save-status').textContent = t('saved'); return true; }
-      catch (error) { storageWarning(error.name === 'ConflictError'); return false; }
+      catch (error) { const conflict = error.name === 'ConflictError', code = report('save', error); storageWarning(conflict, code); return false; }
     });
     return queue;
+  }
+  // Unsaved-only retry. If the stored version moved since this record's base, another
+  // tab wrote: switch to the conflict flow (Download + Load latest) and never overwrite.
+  async function retrySave() {
+    if (!blocked || conflicted || retrying) return;
+    retrying = true; $('retry-save').disabled = true; let stage = 'open';
+    try {
+      await queue;
+      if (!db) db = await S.open();
+      stage = 'load'; const stored = await S.load(db);
+      const unchanged = synced ? stored.version === storageVersion : stored.version === 0 && !localStorage.getItem('taw-day-v1');
+      if (!unchanged) {
+        console.error('[taw] retry stopped: stored version changed', { expected: synced ? storageVersion : 0, found: stored.version });
+        storageWarning(true); return;
+      }
+      if (!synced) storageVersion = 0;
+      blocked = false; loaded = true; $('storage-warning').hidden = true;
+      if (await persist()) synced = true;
+    } catch (e) { storageWarning(false, report(stage, e)); }
+    finally { retrying = false; $('retry-save').disabled = false; }
   }
   function download(name, contents, type) {
     const url = URL.createObjectURL(new Blob([contents], { type })); const a = node('a');
@@ -191,10 +225,12 @@
     $('memo-input').value = record.memoText; persist(); show('review');
   }
   async function load() {
+    synced = false;
     const stored = await S.load(db); const legacy = localStorage.getItem('taw-day-v1');
-    storageVersion = stored.version;
-    record = stored.record ? W.sanitize(stored.record) : (stored.version === 0 && legacy ? W.migrate(legacy) : W.create());
-    loaded = true; blocked = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
+    // Adopt the stored version only together with a record that passed sanitize.
+    const next = stored.record ? W.sanitize(stored.record) : (stored.version === 0 && legacy ? W.migrate(legacy) : W.create());
+    storageVersion = stored.version; record = next; synced = true;
+    loaded = true; blocked = false; conflicted = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
     if (!stored.record) await persist();
   }
   async function init() {
@@ -222,8 +258,10 @@
       $('testimony-input').value = ''; persist(); render(); };
     $('new-day-btn').onclick = () => { if (!confirm(t('newDayConfirm'))) return; invalidate(); clearPhoto(); record = W.create(); $('memo-input').value = ''; persist(); show('capture'); };
     $('download-draft').onclick = () => download('taw-unsaved.json', JSON.stringify(record, null, 2), 'application/json');
-    $('reload-record').onclick = async () => { invalidate(); clearPhoto(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false); } };
-    try { db = await S.open(); await load(); } catch (e) { loaded = true; storageWarning(false); }
+    $('reload-record').onclick = async () => { invalidate(); clearPhoto(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false, report('load', e)); } };
+    $('retry-save').onclick = retrySave;
+    let stage = 'open';
+    try { db = await S.open(); stage = 'load'; await load(); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
     window.addEventListener('beforeunload', event => { if (blocked) { event.preventDefault(); event.returnValue = ''; } });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
     render(); window.TAW_READY = true;
