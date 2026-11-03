@@ -256,7 +256,7 @@
     if (running.extract || !record.memoText.trim()) return;
     const token = jobs.begin('extract'), memo = record.memoText, file = photoFile;
     record = W.submit(record); persist();
-    running.extract = true; message(t('busy')); render();
+    running.extract = true; render();
     try {
       const data = file ? await API.photo(file) : null;
       if (!jobs.current(token)) return; photoData = data;
