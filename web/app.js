@@ -5,7 +5,8 @@
   const $ = id => document.getElementById(id), jobs = W.jobs();
   let record = W.create(), db = null, storageVersion = 0, queue = Promise.resolve(), blocked = false;
   // synced: record descends from storageVersion. conflicted: the banner is the conflict flow (never retried).
-  let synced = false, conflicted = false, retrying = false;
+  // corrupted: the stored record failed sanitize; quarantined keeps its raw form.
+  let synced = false, conflicted = false, retrying = false, corrupted = false, quarantined = null;
   let photoFile = null, photoData = null, photoURL = null, art = null, acceptedArt = null;
   let screen = 'capture', running = {}, statuses = {}, loaded = false;
   const t = (key, vars) => window.TawCopy(key, I.getLanguage(), vars);
@@ -14,9 +15,17 @@
   function fail(error) { message(t('failed', { message: error.message })); }
   // The diagnostic code is supplementary; the requested action stays the unsaved/conflict copy.
   function storageWarning(conflict, code) {
-    blocked = true; conflicted = conflict; $('storage-warning').hidden = false; $('storage-text').textContent = t(conflict ? 'conflict' : 'unsaved');
+    blocked = true; conflicted = conflict; corrupted = false; $('storage-warning').hidden = false; $('storage-text').textContent = t(conflict ? 'conflict' : 'unsaved');
     $('storage-code').textContent = conflict ? '' : code || ''; $('storage-code').hidden = conflict || !code;
-    $('retry-save').hidden = conflict; $('save-status').textContent = '';
+    $('retry-save').hidden = conflict; $('start-fresh').hidden = true; $('save-status').textContent = '';
+  }
+  // Damaged-record flow: never a reload loop. The raw record stays quarantined
+  // (in memory, localStorage and the download button) until the user explicitly
+  // starts a new record over it or loads a valid record saved meanwhile.
+  function corruptWarning(code) {
+    blocked = true; conflicted = false; corrupted = true; $('storage-warning').hidden = false; $('storage-text').textContent = t('corrupt');
+    $('storage-code').textContent = code || ''; $('storage-code').hidden = !code;
+    $('retry-save').hidden = true; $('start-fresh').hidden = false; $('save-status').textContent = '';
   }
   // Error names and messages only: never memo, photo or candidate content.
   function report(stage, error) {
@@ -56,6 +65,24 @@
       if (await persist()) synced = true;
     } catch (e) { storageWarning(false, report(stage, e)); }
     finally { retrying = false; $('retry-save').disabled = false; }
+  }
+  // Explicit recovery from a damaged stored record. CAS over the damaged
+  // version, so a valid record saved by another tab meanwhile is never lost:
+  // that surfaces as the conflict flow instead. The quarantine copy is kept.
+  async function startFresh() {
+    if (!corrupted || !db) return;
+    try {
+      await queue;
+      const next = W.create();
+      storageVersion = await S.save(db, next, storageVersion);
+      quarantined = null; corrupted = false; blocked = false; conflicted = false; synced = true;
+      invalidate(); clearPhoto(); clearVoice(); clearTestimony();
+      record = next; $('memo-input').value = ''; $('storage-warning').hidden = true;
+      show('capture');
+    } catch (e) {
+      if (e.name === 'ConflictError') storageWarning(true); else corruptWarning(report('save', e));
+    }
+    render();
   }
   function download(name, contents, type) {
     const url = URL.createObjectURL(new Blob([contents], { type })); const a = node('a');
@@ -220,6 +247,8 @@
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
   function sample() {
+    const hasContent = !!record.memoText.trim() || record.candidates.length > 0 || record.testimony.length > 0;
+    if (record.mode !== 'sample' && hasContent && !confirm(t('sampleConfirm'))) return;
     invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = W.create(); record.mode = 'sample';
     record.memoText = '오늘 아이와 공원에 갔어요. 아이가 나뭇잎을 주웠어요. 집에 돌아와 나뭇잎을 책 사이에 넣었어요.';
     const parts = record.memoText.match(/[^.]+\./g).map(x => x.trim());
@@ -230,9 +259,22 @@
     synced = false;
     const stored = await S.load(db); const legacy = localStorage.getItem('taw-day-v1');
     // Adopt the stored version only together with a record that passed sanitize.
-    const next = stored.record ? W.sanitize(stored.record) : (stored.version === 0 && legacy ? W.migrate(legacy) : W.create());
+    let next;
+    try {
+      next = stored.record ? W.sanitize(stored.record) : (stored.version === 0 && legacy ? W.migrate(legacy) : W.create());
+    } catch (e) {
+      // Damaged record: quarantine the raw form, keep its version for an
+      // explicit CAS recovery, and boot with a fresh in-memory record so the
+      // app (including saved books) stays reachable behind the banner.
+      quarantined = stored.record;
+      try { localStorage.setItem('taw-quarantine-v2', JSON.stringify({ at: Date.now(), version: stored.version, record: stored.record })); } catch {}
+      storageVersion = stored.version; record = W.create(); loaded = true;
+      $('memo-input').value = ''; corruptWarning(report('load', e));
+      return;
+    }
+    quarantined = null;
     storageVersion = stored.version; record = next; synced = true;
-    loaded = true; blocked = false; conflicted = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
+    loaded = true; blocked = false; conflicted = false; corrupted = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
     if (!stored.record) await persist();
   }
   async function init() {
@@ -259,9 +301,11 @@
       record = Object.assign({}, record, { testimony: record.testimony.concat({ text, at: Date.now(), revision: record.contentRevision, question: record.question?.text || null }) });
       $('testimony-input').value = ''; persist(); render(); };
     $('new-day-btn').onclick = () => { if (!confirm(t('newDayConfirm'))) return; invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = W.create(); $('memo-input').value = ''; persist(); show('capture'); };
-    $('download-draft').onclick = () => download('taw-unsaved.json', JSON.stringify(record, null, 2), 'application/json');
+    $('download-draft').onclick = () => corrupted && quarantined
+      ? download('taw-damaged-record.json', JSON.stringify(quarantined, null, 2), 'application/json')
+      : download('taw-unsaved.json', JSON.stringify(record, null, 2), 'application/json');
     $('reload-record').onclick = async () => { invalidate(); clearPhoto(); clearVoice(); clearTestimony(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false, report('load', e)); } };
-    $('retry-save').onclick = retrySave;
+    $('retry-save').onclick = retrySave; $('start-fresh').onclick = startFresh;
     let stage = 'open';
     try { db = await S.open(); stage = 'load'; await load(); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
     window.addEventListener('beforeunload', event => { if (blocked) { event.preventDefault(); event.returnValue = ''; } });

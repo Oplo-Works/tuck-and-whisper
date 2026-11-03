@@ -82,3 +82,18 @@ test('DS1 independent jobs survive completion; all invalidation events kill old 
 test('generation failure leaves selection valid for fallback and retry', () => {
   const r = ready(), out = W.compose(r, 'story', null, true); assert.equal(W.prepared(r), true); assert.equal(W.validOutput(r, out), true);
 });
+test('sanitize rejects malformed testimony, history and unknown entries instead of passing them to rendering', () => {
+  const clone = () => JSON.parse(JSON.stringify(ready()));
+  const valid = clone(); valid.testimony = [{ text: '답', at: 1, revision: 0, question: null }];
+  assert.equal(W.sanitize(valid).testimony[0].text, '답');
+  for (const bad of [[null], ['text'], [{ at: 1 }], [{ text: '답' }], [{ text: 1, at: 1 }], [{ text: '답', at: 'now' }]]) {
+    const r = clone(); r.testimony = bad; assert.throws(() => W.sanitize(r), /Invalid testimony/, JSON.stringify(bad));
+  }
+  for (const bad of [[null], [{ at: 1 }], [{ action: 'input' }], [{ action: 1, at: 1 }], [{ action: '', at: 1 }]]) {
+    const r = clone(); r.history = bad; assert.throws(() => W.sanitize(r), /Invalid history/, JSON.stringify(bad));
+  }
+  for (const bad of [[null], ['text'], [{ text: '모름' }], [{ id: 'U1' }], [{ id: 1, text: '모름' }]]) {
+    const r = clone(); r.unknowns = bad; assert.throws(() => W.sanitize(r), /Invalid unknown/, JSON.stringify(bad));
+  }
+  const noUnknowns = clone(); delete noUnknowns.unknowns; assert.throws(() => W.sanitize(noUnknowns));
+});

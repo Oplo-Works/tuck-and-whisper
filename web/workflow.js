@@ -134,9 +134,27 @@
   function sanitize(raw) {
     if (!raw || raw.schemaVersion !== 2 || typeof raw.dayId !== 'string' || typeof raw.memoText !== 'string' ||
       !Number.isSafeInteger(raw.contentRevision) || raw.contentRevision < 0 || !Number.isSafeInteger(raw.sourceRevision) || raw.sourceRevision < 0 ||
-      !Array.isArray(raw.candidates) || !Array.isArray(raw.history) || !Array.isArray(raw.testimony)) throw Error('Invalid record');
+      !Array.isArray(raw.candidates) || !Array.isArray(raw.history) || !Array.isArray(raw.testimony) ||
+      !Array.isArray(raw.unknowns)) throw Error('Invalid record');
     const n = create();
     for (const key of Object.keys(n)) if (Object.hasOwn(raw, key)) n[key] = copy(raw[key]);
+    // Entry-level validation: a single null or malformed item must reject the
+    // record here, not crash rendering later (testimony/history are rendered
+    // unconditionally or in the audit trail).
+    n.unknowns = n.unknowns.map(u => {
+      if (!u || typeof u !== 'object' || typeof u.id !== 'string' || typeof u.text !== 'string') throw Error('Invalid unknown');
+      return u;
+    });
+    n.testimony = n.testimony.map(item => {
+      if (!item || typeof item !== 'object' || typeof item.text !== 'string' ||
+        typeof item.at !== 'number' || !Number.isFinite(item.at)) throw Error('Invalid testimony');
+      return item;
+    });
+    n.history = n.history.map(item => {
+      if (!item || typeof item !== 'object' || typeof item.action !== 'string' || !item.action ||
+        typeof item.at !== 'number' || !Number.isFinite(item.at)) throw Error('Invalid history');
+      return item;
+    });
     const seen = new Set();
     n.candidates = n.candidates.map(c => {
       if (!c || typeof c.id !== 'string' || seen.has(c.id) || typeof c.text !== 'string' || !c.text.trim() ||

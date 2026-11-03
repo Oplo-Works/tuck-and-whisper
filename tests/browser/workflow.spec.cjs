@@ -174,7 +174,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: testimony-reset (shell v20)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: sample-guard-corrupt-recovery (shell v21)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -368,4 +368,67 @@ test('v18 after an open failure, Retry save never overwrites an existing stored 
   expect(await page.evaluate(() => window.tawSaveCalls)).toBe(0);
   expect((await stored(page)).memoText).toBe('이미 저장된 기록');
   await page.locator('#reload-record').click(); await expect(page.locator('#memo-input')).toHaveValue('이미 저장된 기록');
+});
+
+// v21: sample replacement guard (1-1) and damaged-record recovery (2-1).
+test('v21 sample asks before replacing a non-empty record; cancel keeps it, confirm replaces it', async ({ page }) => {
+  await boot(page); await review(page);
+  let accept = false; const dialogs = [];
+  page.on('dialog', async d => { dialogs.push(d.message()); accept ? await d.accept() : await d.dismiss(); });
+  await page.locator('#nav-capture').click(); await page.locator('#load-sample-btn').click();
+  expect(dialogs).toHaveLength(1); expect(dialogs[0]).toContain('샘플로 바꿀까요');
+  await expect(page.locator('#screen-capture')).toBeVisible();
+  expect((await stored(page)).mode).toBe('live'); expect((await stored(page)).memoText).toBe(memo);
+  accept = true; await page.locator('#load-sample-btn').click();
+  await expect(page.locator('#screen-review')).toBeVisible();
+  expect((await stored(page)).mode).toBe('sample'); expect(dialogs).toHaveLength(2);
+});
+test('v21 sample needs no confirmation on an empty record or when already sampling', async ({ page }) => {
+  await boot(page);
+  let dialogs = 0; page.on('dialog', async d => { dialogs++; await d.accept(); });
+  await page.locator('#load-sample-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
+  expect((await stored(page)).mode).toBe('sample'); expect(dialogs).toBe(0);
+  await page.locator('#nav-capture').click(); await page.locator('#load-sample-btn').click();
+  await expect(page.locator('#screen-review')).toBeVisible(); expect(dialogs).toBe(0);
+});
+async function corruptField(page, field) {
+  await page.evaluate(name => new Promise((resolve, reject) => {
+    const open = indexedDB.open('taw-v2');
+    open.onsuccess = () => { const db = open.result, tx = db.transaction('current', 'readwrite'), store = tx.objectStore('current'), g = store.get('day');
+      g.onsuccess = () => { const v = g.result; v.record[name] = [null]; store.put(v, 'day'); };
+      tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error); };
+    open.onerror = () => reject(open.error);
+  }), field);
+}
+for (const field of ['testimony', 'history']) {
+  test('v21 damaged ' + field + ' entry boots to a recovery banner, not a broken render', async ({ page }) => {
+    await boot(page); await page.locator('#memo-input').fill('손상 주입용 더미 메모');
+    await expect(page.locator('#save-status')).toContainText('저장됨');
+    await corruptField(page, field);
+    await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+    await expect(page.locator('#storage-warning')).toBeVisible();
+    await expect(page.locator('#storage-text')).toContainText('손상되어 읽을 수 없어요');
+    await expect(page.locator('#start-fresh')).toBeVisible(); await expect(page.locator('#retry-save')).toBeHidden();
+    await expect(page.locator('#library-btn')).toBeVisible();
+    const quarantined = await page.evaluate(() => JSON.parse(localStorage.getItem('taw-quarantine-v2')));
+    expect(quarantined.record[field]).toEqual([null]); expect(quarantined.record.memoText).toBe('손상 주입용 더미 메모');
+    // The damaged record is still in place until the user explicitly recovers.
+    expect((await stored(page)).memoText).toBe('손상 주입용 더미 메모');
+    await page.locator('#start-fresh').click();
+    await expect(page.locator('#storage-warning')).toBeHidden();
+    const fresh = await stored(page); expect(fresh.memoText).toBe(''); expect(fresh[field]).toEqual([]);
+    // The original is still preserved in quarantine after recovery.
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('taw-quarantine-v2')).record.memoText)).toBe('손상 주입용 더미 메모');
+    // And the app is fully usable afterwards.
+    await page.locator('#memo-input').fill('복구 후 새 메모'); await expect(page.locator('#save-status')).toContainText('저장됨');
+    expect((await stored(page)).memoText).toBe('복구 후 새 메모');
+  });
+}
+test('v21 a normal record reloads without any recovery banner', async ({ page }) => {
+  await boot(page); await page.locator('#memo-input').fill('정상 더미 메모');
+  await expect(page.locator('#save-status')).toContainText('저장됨');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#storage-warning')).toBeHidden(); await expect(page.locator('#start-fresh')).toBeHidden();
+  await expect(page.locator('#memo-input')).toHaveValue('정상 더미 메모'); await expect(page.locator('#library-btn')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('taw-quarantine-v2'))).toBeNull();
 });
