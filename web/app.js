@@ -80,6 +80,7 @@
   function image(url) { const el = node('img', undefined, 'art'); el.src = url; el.alt = t('photo'); return el; }
   function clearPhoto() { if (photoURL) URL.revokeObjectURL(photoURL); photoURL = null; photoData = null; photoFile = null; $('photo-input').value = ''; }
   function clearVoice() { $('voice-input').value = ''; }
+  function clearTestimony() { $('testimony-input').value = ''; }
   function candidate(c) {
     const box = node('div', undefined, 'candidate-card'); box.dataset.factId = c.id;
     box.append(node('p', c.text, 'candidate-text'), node('p', t(c.source === 'memo' ? 'sourceMemo' : 'sourcePhoto'), 'source'));
@@ -219,7 +220,7 @@
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
   function sample() {
-    invalidate(); clearPhoto(); clearVoice(); record = W.create(); record.mode = 'sample';
+    invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = W.create(); record.mode = 'sample';
     record.memoText = '오늘 아이와 공원에 갔어요. 아이가 나뭇잎을 주웠어요. 집에 돌아와 나뭇잎을 책 사이에 넣었어요.';
     const parts = record.memoText.match(/[^.]+\./g).map(x => x.trim());
     record = W.extract(record, { candidates: parts.map(text => ({ text, quote: text, source: 'memo', grade: 'C' })), unknowns: [] });
@@ -257,9 +258,9 @@
     $('save-testimony').onclick = () => { const text = $('testimony-input').value.trim(); if (!text) return;
       record = Object.assign({}, record, { testimony: record.testimony.concat({ text, at: Date.now(), revision: record.contentRevision, question: record.question?.text || null }) });
       $('testimony-input').value = ''; persist(); render(); };
-    $('new-day-btn').onclick = () => { if (!confirm(t('newDayConfirm'))) return; invalidate(); clearPhoto(); clearVoice(); record = W.create(); $('memo-input').value = ''; persist(); show('capture'); };
+    $('new-day-btn').onclick = () => { if (!confirm(t('newDayConfirm'))) return; invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = W.create(); $('memo-input').value = ''; persist(); show('capture'); };
     $('download-draft').onclick = () => download('taw-unsaved.json', JSON.stringify(record, null, 2), 'application/json');
-    $('reload-record').onclick = async () => { invalidate(); clearPhoto(); clearVoice(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false, report('load', e)); } };
+    $('reload-record').onclick = async () => { invalidate(); clearPhoto(); clearVoice(); clearTestimony(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false, report('load', e)); } };
     $('retry-save').onclick = retrySave;
     let stage = 'open';
     try { db = await S.open(); stage = 'load'; await load(); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
@@ -274,7 +275,7 @@
         try {
           await queue; const next = W.create();
           storageVersion = await S.save(db, next, storageVersion, true);
-          invalidate(); clearPhoto(); clearVoice(); record = next; $('memo-input').value = '';
+          invalidate(); clearPhoto(); clearVoice(); clearTestimony(); record = next; $('memo-input').value = '';
           localStorage.removeItem('taw-day-v1'); show('capture');
         } finally { blocked = false; render(); }
       } });

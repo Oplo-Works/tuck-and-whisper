@@ -174,7 +174,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: voice-reset (shell v19)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: testimony-reset (shell v20)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -211,6 +211,47 @@ test('v19 ordinary edits and candidate decisions preserve an untranscribed voice
   await page.locator('#nav-capture').click();
   expect(await page.locator('#voice-input').evaluate(input => input.files.length)).toBe(1);
   await expect(page.locator('#transcribe-btn')).toBeEnabled();
+});
+
+for (const reset of ['new day', 'load latest', 'sample', 'delete all']) {
+  test('v20 testimony draft clears on ' + reset, async ({ page, context }) => {
+    await boot(page);
+    await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+    await page.locator('#testimony-input').fill('DUMMY_RESPONSE_FROM_PREVIOUS_DAY');
+    await page.locator('#nav-capture').click();
+    page.on('dialog', dialog => dialog.accept());
+    if (reset === 'load latest') {
+      const other = await context.newPage(); await boot(other);
+      await other.locator('#memo-input').fill('Latest dummy memo');
+      await expect(other.locator('#save-status')).toContainText('저장됨');
+      await page.locator('#memo-input').fill('Stale dummy memo');
+      await expect(page.locator('#storage-warning')).toBeVisible();
+      await page.locator('#reload-record').click();
+      await expect(page.locator('#memo-input')).toHaveValue('Latest dummy memo');
+    } else if (reset === 'delete all') {
+      await page.locator('#library-btn').click(); await page.locator('#delete-all').click();
+      await expect(page.locator('#screen-capture')).toBeVisible();
+    } else if (reset === 'sample') {
+      await page.locator('#load-sample-btn').click();
+    } else {
+      await page.locator('#new-day-btn').click();
+    }
+    await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+    await expect(page.locator('#testimony-input')).toHaveValue('');
+    await page.locator('#save-testimony').click();
+    expect((await stored(page)).testimony).toHaveLength(0);
+  });
+}
+
+test('v20 ordinary edits and candidate decisions preserve an unsaved testimony draft', async ({ page }) => {
+  await boot(page);
+  await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+  await page.locator('#testimony-input').fill('DUMMY_UNSAVED_RESPONSE');
+  await page.locator('#nav-capture').click();
+  await review(page);
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#testimony-input')).toHaveValue('DUMMY_UNSAVED_RESPONSE');
+  expect((await stored(page)).testimony).toHaveLength(0);
 });
 
 test('voice conversion failure recovers, and a late transcript cannot overwrite edited input', async ({ page }) => {
