@@ -67,9 +67,19 @@ Unconfirmed facts cannot reach the child. This guarantee is enforced in determin
 - Deterministic validation checks every composed sentence: each must cite at least one fact ID, and every cited ID must belong to the confirmed set. A leak-word filter screens for content no confirmed fact supports. Failures retry once, then fall back to rendering the confirmed facts verbatim.
 - Flipping any decision (confirm → reject) invalidates the composed briefing and page immediately, and entry guards discard stale compositions — an outdated page is never served as current.
 
-## Counterfactual harness
+## Counterfactual harness & Verification
 
-The confirmation boundary is not a prompt-time promise — it is re-verified on every build by a counterfactual harness (`node tests/harness.mjs`), built to be falsifiable: if the boundary were broken, the harness would FAIL. It drives the app with adversarial inputs — an extraction response reusing an old fact ID, NFD-normalized leak bypasses, sentences citing the rejected fact — and judges every served sentence and every synthesis request body against an independent oracle derived from the fixture, never from the app's own validator. On the current build (`e65659e`):
+The confirmation boundary is not a prompt-time promise — it is re-verified on every build by an automated test harness (`node tests/harness.mjs`), built to be falsifiable: if the boundary were broken, the suite would FAIL. It drives the app with adversarial inputs — an extraction response reusing an old fact ID, NFD-normalized leak bypasses, sentences citing the rejected fact — and judges every served sentence and every synthesis request body against an independent oracle derived from the fixture, never from the app's own validator.
+
+On the current build (`a0d8f8a`, v26):
+
+- **Test Suite Total: 146/146 PASS**
+  - Core unit tests (`node tests/core.test.mjs`): 48/48 PASS
+  - Node integration tests (`tests/workflow`, `storage`, `cache`, `mutations`, `books`): 39/39 PASS
+  - Browser tests (`tests/browser/workflow.spec.cjs`): 59/59 PASS (measured on laptop physical Chrome 156, viewport 418×900)
+- Shell: `taw-shell-v26`, footer `build: order-clarity (shell v26)`
+
+Historical baseline (v15 build `e65659e`, preserved in `tests/legacy-v15/`):
 
 - Core tests: 48/48 PASS
 - DS-1 concurrency regression: 68/68 PASS
@@ -77,10 +87,12 @@ The confirmation boundary is not a prompt-time promise — it is re-verified on 
 - Fixture SHA-256: `bd22e9c1…` (unchanged)
 - Shell: `taw-shell-v15`, footer `build: ui-polish (shell v15)`
 
-The same harness run also confirms:
+The historical v15 harness run confirmed:
 
 - sentences citing unconfirmed facts: 0
 - rejected text in model requests: 0
+
+*Source limitation note on these metrics:* These two counters were measured at the v15 harness boundary (`tests/legacy-v15/harness.mjs`). In v26, the updated assert test suite (`tests/harness.mjs` and `tests/mutations.test.mjs`) maintains that confirmation boundary, but these are not newly generated live counters from v26.
 
 Scope notes: The harness verifies structural citation integrity and the model-request boundary. It does not claim semantic entailment. It checks the deterministic layer plus the render output it collects into the app's own containers; real-browser rendering is covered separately by device playback and E2E. The app keeps a single current record, so version-history preservation is not claimed anywhere.
 
