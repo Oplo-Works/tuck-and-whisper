@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   let app, saving = false, statusKey = '', exportSnapshot = null, exportRevision = null, exportDay = null, exportSaved = false, objectURLs = [];
+  let coverURLs = [];
   const $ = id => document.getElementById(id), S = window.TawStorage, B = window.TawBooks, W = window.TawWorkflow;
   function release() { for (const url of objectURLs) URL.revokeObjectURL(url); objectURLs = []; }
   function display(book) {
@@ -49,17 +50,31 @@
     finally { saving = false; render(); }
   }
   async function library() {
+    for (const url of coverURLs) URL.revokeObjectURL(url); coverURLs = [];
     app.show('library'); const area = $('books'); area.replaceChildren();
     try {
       const books = await S.books(app.getDB());
       if (!books.length) area.append(app.node('p', app.t('libraryEmpty')));
       for (const book of books) {
-        const card = app.node('div', undefined, 'card'), open = app.node('button', book.title);
+        const card = app.node('div', undefined, 'card book-tile'), open = app.node('button', undefined, 'book-open');
+        const normalized = B.normalize(book), cover = normalized.artwork || normalized.paragraphs.find(p => p.artwork)?.artwork;
+        // Covers reuse artwork already stored with the book. Never persist or fetch an original photo.
+        if (cover instanceof Blob && ['image/png', 'image/jpeg', 'image/webp'].includes(cover.type)) {
+          const url = URL.createObjectURL(cover); coverURLs.push(url);
+          const image = app.node('img', undefined, 'book-thumb'); image.src = url; image.alt = app.t('aiArt'); open.append(image);
+        } else {
+          const empty = app.node('span', undefined, 'book-cover-empty'), label = app.node('span', app.t('textBook'));
+          label.dataset.copy = 'textBook'; empty.append(window.TawUI.icon('book'), label); open.append(empty);
+        }
+        open.append(app.node('span', normalized.title, 'book-name')); open.setAttribute('aria-label', normalized.title);
         open.onclick = () => { exportSnapshot = book; exportSaved = true; display(book); $('book-note').textContent = app.t('past') + ' · ' + app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false; $('book-dialog').showModal(); };
         const remove = app.node('button', app.t('deleteBook'));
+        remove.dataset.copy = 'deleteBook'; remove.dataset.icon = 'trash';
         remove.onclick = async () => { if (!confirm(app.t('deleteBook') + '?')) return; try { await S.deleteBook(app.getDB(), book.id); await library(); } catch (e) { app.fail(e); } };
-        card.append(open, app.node('p', book.eventDate, 'book-date'), app.node('p', book.lines[0] || ''), remove); area.append(card);
+        const date = app.node('time', normalized.eventDate, 'book-date'); date.dateTime = normalized.eventDate;
+        card.append(open, date, app.node('p', normalized.lines[0] || '', 'book-teaser'), remove); area.append(card);
       }
+      window.TawUI.decorate(area);
     } catch (e) { app.fail(e); }
   }
   async function previewExport() {
@@ -89,7 +104,7 @@
   }
   function render() {
     if (!app) return;
-    $('library-btn').hidden = false; $('book-tools').hidden = false;
+    $('library-btn').hidden = false; $('nav-library').disabled = false; $('book-tools').hidden = false;
     const valid = W.validOutput(app.getRecord(), app.getRecord().story);
     const meta = B.metadata(app.getRecord());
     const key = JSON.stringify([app.getRecord().dayId, app.getRecord().contentRevision, meta, app.getRecord().question?.text, app.getArt(), app.getParagraphArts()]);
@@ -106,7 +121,8 @@
     app = context;
     $('book-title').oninput = () => app.setBookDetails({ title: $('book-title').value });
     $('event-date').oninput = () => app.setBookDetails({ eventDate: $('event-date').value });
-    $('save-book').onclick = save; $('library-btn').onclick = library; $('export-book').onclick = previewExport; $('download-book').onclick = exportBook;
+    $('save-book').onclick = save; $('library-btn').onclick = $('nav-library').onclick = library; $('export-book').onclick = previewExport; $('download-book').onclick = exportBook;
+    window.addEventListener('beforeunload', () => { for (const url of coverURLs) URL.revokeObjectURL(url); release(); });
     $('book-dialog').addEventListener('close', () => { release(); exportSnapshot = null; });
     $('delete-all').onclick = async () => { if (!confirm(app.t('deleteConfirm'))) return; try { await app.reset(); } catch (e) { app.fail(e); } };
     render();

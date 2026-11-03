@@ -3,131 +3,59 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#14161d">
+<meta name="theme-color" content="#f5f0e6">
 <title>Tuck and Whisper</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('taw-theme')==='dusk'?'dusk':'paper'}catch{document.documentElement.dataset.theme='paper'}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<style>
-  :root{--bg:#14161d;--card:#1e212b;--line:#2c303e;--text:#eceaf2;--dim:#9aa0ae;--accent:#f2c063;--accent2:#8fd6ae;--danger:#e08a8a}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}
-  header{padding:24px 20px 4px;text-align:center}
-  header .moon{font-size:36px}
-  header h1{margin:6px 0 2px;font-size:22px;letter-spacing:-.3px}
-  header p{margin:0;color:var(--dim);font-style:italic}
-  main{max-width:640px;margin:0 auto;padding:16px}
-  section[hidden]{display:none}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
-  .card h2{margin:0 0 4px;font-size:16px}
-  .reset-actions{margin:24px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
-  .hint{color:var(--dim);font-size:13px;margin:4px 0}
-  .notice{color:var(--accent);font-size:13px;background:rgba(242,192,99,.08);border:1px solid rgba(242,192,99,.4);border-radius:10px;padding:8px 12px;margin:8px 0}
-  .error{color:var(--danger);font-size:13px;background:rgba(224,138,138,.08);border:1px solid rgba(224,138,138,.5);border-radius:10px;padding:8px 12px;margin:8px 0}
-  details.debug{margin:8px 0;color:var(--dim);font-size:12px}
-  details.debug summary{cursor:pointer}
-  details.debug pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;max-height:220px;overflow:auto;color:var(--dim);font-size:11px;margin:6px 0 0}
-  label{display:block;font-size:13px;color:var(--dim);margin:12px 0 4px}
-  input[type=file]{width:100%;font-size:14px;font-family:inherit}
-  input[type="file"]::file-selector-button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font:inherit;margin-right:8px;cursor:pointer}
-  textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:10px;font-size:15px;font-family:inherit;resize:vertical}
-  button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:14px;margin:4px 6px 4px 0;cursor:pointer}
-  button:disabled{opacity:.4;cursor:default}
-  button.primary{background:var(--accent);border-color:var(--accent);color:#14161d;font-weight:600}
-  .memo-readonly{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap}
-  .photo-placeholder{border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--dim);font-size:13px;margin:8px 0}
-  .photo-thumb{max-width:100%;max-height:220px;border-radius:10px;display:block;margin:8px 0}
-  .candidate-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
-  .candidate-card.grade-b{border-left:4px solid var(--accent)}
-  .candidate-card.is-confirmed,.candidate-card.is-rejected{opacity:.78;padding:8px}
-  .candidate-card.is-rejected{border-left:4px solid var(--danger)}
-  .candidate-card.is-confirmed .card-buttons button:not(.primary),.candidate-card.is-rejected .card-buttons button:not(.primary){opacity:.45}
-  .candidate-text{margin:0;font-size:15px}
-  .chips{margin:8px 0 2px}
-  .chip{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin-right:4px;color:var(--dim)}
-  .chip-grade-b{color:var(--accent);border-color:var(--accent)}
-  .chip-confirmed{color:var(--accent2);border-color:var(--accent2)}
-  .chip-rejected{color:var(--danger);border-color:var(--danger)}
-  .count{font-size:15px;font-weight:600;margin:8px 0 12px;color:var(--accent)}
-  ol{padding-left:0;list-style:none;margin:0}
-  .confirmed-item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;margin:6px 0}
-  .sticky-actions{position:sticky;bottom:0;z-index:1;background:var(--card);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))}
-  #premise-details{margin:12px 0 4px}
-  #premise-details summary{font-size:13px;color:var(--dim);cursor:pointer}
-  .card h3{margin:14px 0 4px;font-size:14px}
-  select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:8px;font-size:14px}
-  .briefing-line{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
-  .fact-detail{margin-top:6px;color:var(--dim);font-size:13px;background:var(--bg);border-radius:8px;padding:8px}
-  .chip-fact{cursor:pointer}
-  .chip-premise-on{color:var(--accent2);border-color:var(--accent2)}
-  .provenance{margin-top:6px;color:var(--dim);font-size:13px;opacity:.72;background:none;border:0;padding:2px 0;white-space:pre-wrap}
-  #page-sentences .candidate-text{font-size:19px}
-  .testimony-item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0;font-size:14px}
-  .testimony-time{color:var(--dim);font-size:11px;margin-right:8px}
-  input[type=text],input[type=date]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px;font-size:14px}
-  input[type=date]{color-scheme:dark}
-  footer{text-align:center;color:var(--dim);font-size:12px;padding:12px 0 32px}
-  .confirm-overlay{position:fixed;inset:0;background:rgba(20,22,29,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
-  .confirm-overlay[hidden]{display:none}
-  .confirm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%}
-  .confirm-card p{margin:0 0 12px;font-size:15px}
-  .recall-question{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;font-size:16px}
-  header select{display:block;width:auto;margin:8px auto 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px}
-
-  [hidden]{display:none!important} button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--accent2);outline-offset:3px}
-  nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px} nav button{flex:1}
-  .story p{font-size:20px;line-height:1.9}.art{width:100%;max-height:65vh;object-fit:contain;border-radius:14px}
-  details{margin:12px 0}summary{cursor:pointer;padding:8px}.use{display:flex;gap:8px;align-items:center;color:var(--text)}
-  .use input{width:20px;height:20px}.candidate-card.is-confirmed{opacity:1}.source{font-size:12px;color:var(--dim)}
-  #message{white-space:pre-wrap}pre{white-space:pre-wrap;overflow-wrap:anywhere}.toolbar{display:flex;flex-wrap:wrap;gap:8px}
-  dialog{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:16px;max-width:640px;width:calc(100% - 32px);max-height:90vh;padding:20px}dialog::backdrop{background:#000a}
-</style></head><body>
-<header><div class="moon">🌙</div><h1>Tuck and Whisper</h1><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></header>
+<link rel="stylesheet" href="design.css"></head><body>
+<header><div class="brand-row"><div class="brand"><span class="brand-symbol" data-icon="moon" aria-hidden="true"></span><h1>Tuck and Whisper</h1></div></div><p>You missed the moment. You don't have to miss the story.</p><div class="header-tools"><select id="lang-select" aria-label="Language"></select><button id="theme-toggle" type="button" aria-pressed="false"><span></span></button></div></header>
 <main>
 <p id="language-note" class="hint" hidden data-copy="translation"></p>
-<div id="storage-warning" class="error" role="alert" hidden><p id="storage-text"></p><p id="storage-code" class="hint" hidden></p><button id="retry-save" data-copy="retrySave" hidden></button><button id="start-fresh" data-copy="startFresh" hidden></button><button id="download-draft" data-copy="downloadDraft"></button><button id="reload-record" data-copy="reload"></button></div>
+<div id="storage-warning" class="error" role="alert" hidden><p id="storage-text"></p><p id="storage-code" class="hint" hidden></p><button id="retry-save" data-copy="retrySave" hidden></button><button id="start-fresh" data-copy="startFresh" hidden></button><button id="download-draft" data-copy="downloadDraft" data-icon="download"></button><button id="reload-record" data-copy="reload"></button></div>
 <p id="save-status" class="hint" aria-live="polite"></p><p id="message" role="status" aria-live="polite" class="notice" hidden></p>
-<nav aria-label="Steps"><button id="nav-capture" data-copy="stepCapture"></button><button id="nav-review" data-copy="stepReview"></button><button id="nav-preview" data-copy="stepRead"></button></nav>
+<nav aria-label="Steps"><button id="nav-capture" data-copy="stepCapture" data-icon="note"></button><button id="nav-review" data-copy="stepReview" data-icon="review"></button><button id="nav-preview" data-copy="stepRead" data-icon="book"></button><button id="nav-library" data-copy="stepLibrary" data-icon="library" disabled></button></nav>
 <p id="next-action" class="notice" role="status"></p>
 <section id="screen-capture"><div class="card"><h2 tabindex="-1" data-copy="capture"></h2>
 <p class="hint" data-copy="captureHint"></p>
-<p class="hint" data-copy="recordGuide"></p>
 <div id="photo-section">
-<label for="photo-input" data-copy="photo"></label><input type="file" id="photo-input" accept="image/*"><p id="photo-status" class="hint"></p>
-<p class="hint" data-copy="photoSkip"></p></div>
+<label for="photo-input" data-copy="photo" data-icon="photo"></label><input type="file" id="photo-input" accept="image/*" aria-describedby="photo-help"><p id="photo-status" class="hint"></p>
+<p id="photo-help" class="hint" data-copy="photoSkip"></p></div>
 <div id="memo-section">
-<label for="memo-input" data-copy="memo"></label><textarea id="memo-input" rows="6"></textarea>
-<p class="hint" data-copy="memoWays"></p><p class="hint" data-copy="voiceReplace"></p>
-<details><summary data-copy="voice"></summary><p class="hint" data-copy="voiceInfo"></p><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button></details>
+<label for="memo-input" data-copy="memo" data-icon="note"></label><textarea id="memo-input" rows="5" aria-describedby="voice-warning"></textarea>
+<p class="hint" data-copy="memoWays"></p>
+<details><summary data-copy="voice" data-icon="voice"></summary><p class="hint" data-copy="voiceInfo"></p><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button></details><p id="voice-warning" data-copy="voiceReplace"></p>
 </div>
 <div id="preparation-notes">
-<p class="hint" data-copy="inputPrivacy"></p><p class="hint" data-copy="retention"></p>
+<details id="capture-privacy"><summary data-copy="privacySummary" data-icon="shield"></summary><p class="hint" data-copy="inputPrivacy"></p><p class="hint" data-copy="retention"></p></details>
 <p class="hint" data-copy="voiceCheck"></p><p id="voice-progress" class="notice" role="status" data-copy="voiceBusy" hidden></p>
 </div>
-<button id="extract-btn" class="primary" data-copy="extract"></button>
-</div><div class="reset-actions"><button id="new-day-btn" data-copy="newDay"></button></div>
-<button id="library-btn" data-copy="library" hidden></button></section>
+<button id="extract-btn" class="primary" data-copy="extract" data-icon="arrow"></button>
+</div><div class="reset-actions"><button id="new-day-btn" data-copy="newDay" data-icon="trash"></button></div>
+<button id="library-btn" data-copy="library" data-icon="library" hidden></button></section>
 <section id="screen-review" hidden><div class="card"><h2 tabindex="-1" data-copy="review"></h2><p data-copy="skipped" class="hint"></p><p id="selection-count"></p>
 <div id="memo-candidates"></div><details id="photo-details"><summary data-copy="photoGroup"></summary><div id="photo-preview"></div><div id="photo-candidates"></div></details>
 <p id="identity-hint" class="hint" data-copy="identityHint"></p>
-<details id="identity-details"><summary data-copy="identity"></summary><p class="hint" data-copy="noImage"></p>
+<details id="identity-details"><summary data-copy="identity" data-icon="shield"></summary><p class="hint" data-copy="noImage"></p>
 <label for="identity-people" data-copy="people"></label><select id="identity-people"></select>
 <label for="identity-animals" data-copy="animals"></label><select id="identity-animals"></select></details>
-<div class="sticky-actions"><button id="prepare-btn" class="primary" data-copy="prepare"></button><button id="edit-input" data-copy="edit"></button></div></div></section>
+<div class="sticky-actions"><button id="prepare-btn" class="primary" data-copy="prepare" data-icon="arrow"></button><button id="edit-input" data-copy="edit"></button></div></div></section>
 <section id="screen-preview" hidden><div class="card"><h2 tabindex="-1" data-copy="preview"></h2><p id="restricted-notice" class="notice" data-copy="noMemo" hidden></p>
 <div id="briefing"></div><p id="briefing-status" aria-live="polite"></p><button id="briefing-retry" data-copy="remakeBriefing"></button>
 <h3 data-copy="question"></h3><textarea id="question-text" rows="4" aria-label="Question"></textarea><p id="question-meta" class="hint"></p><button id="another-question" data-copy="another"></button>
-<p class="hint" data-copy="retention"></p><button id="open-bedtime" class="primary" data-copy="read"></button>
+<p class="hint" data-copy="retention"></p><button id="open-bedtime" class="primary" data-copy="read" data-icon="book"></button>
 <details class="audit"><summary data-copy="audit"></summary><div id="preview-audit"></div></details></div></section>
 <section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><h3 id="reading-title"></h3><p id="reading-date" class="hint"></p><div id="reading-art"></div><div id="para-art-tools" hidden><button id="para-art-all" data-copy="paraArtAll"></button><p id="para-art-hint" class="hint"></p></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
-<h3 data-copy="question"></h3><p id="reading-question" class="recall-question"></p><p class="hint" data-copy="testimonyHint"></p>
+<h3 data-copy="question"></h3><p id="reading-question" class="recall-question"></p>
 <details><summary data-copy="parentTools"></summary><button id="story-retry" data-copy="remakeStory"></button><button id="style-btn" data-copy="style"></button>
 <p id="art-message" class="hint" data-copy="noImage"></p><div id="art-preview"></div><div id="art-approval" hidden><p data-copy="artworkReview"></p><button id="accept-art" data-copy="acceptArt"></button><button id="reject-art" data-copy="rejectArt"></button></div></details>
 <details class="audit"><summary data-copy="audit"></summary><div id="bedtime-audit"></div></details>
-<label for="testimony-input" data-copy="testimony"></label><input type="text" id="testimony-input"><button id="save-testimony" data-copy="saveWords"></button><div id="testimony-list"></div>
-<div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p id="book-save-status" role="status"></p><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook"></button><button id="export-book" data-copy="export"></button></div>
+<div id="testimony-area"><label for="testimony-input" data-copy="testimony"></label><p id="testimony-help" class="hint" data-copy="testimonyHint"></p><input type="text" id="testimony-input" aria-describedby="testimony-help"><button id="save-testimony" data-copy="saveWords" data-icon="talk"></button><div id="testimony-list"></div></div>
+<div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p id="book-save-status" role="status"></p><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook" data-icon="save"></button><button id="export-book" data-copy="export" data-icon="download"></button></div>
 </div></section>
-<section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><button id="delete-all" data-copy="deleteAll"></button></div></section>
+<section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><button id="delete-all" data-copy="deleteAll" data-icon="trash"></button></div></section>
 <dialog id="book-dialog"><form method="dialog"><button data-copy="back"></button></form><p id="book-note"></p><div id="book-content"></div><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
-</main><footer>build: order-clarity (shell v27)</footer>
-<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="books.js"></script><script src="books-ui.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="api.js"></script><script src="app.js"></script>
+</main><footer>build: warm-paper (shell v28)</footer>
+<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="books.js"></script><script src="books-ui.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="ui.js"></script>
+<script src="api.js"></script><script src="app.js"></script>
 </body></html>

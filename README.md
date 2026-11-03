@@ -14,6 +14,14 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
+## UI update — warm paper (shell v28)
+
+The design update adds warm paper and manually selected dusk themes, labeled line icons, a four-step navigation bar, explicit review/inclusion states, larger reading typography, and library covers drawn only from artwork already saved with a book. The selected theme is a browser preference; time and workflow navigation never change it automatically. Fact selection, literal source passages, briefing content, model requests, and the storage schema are unchanged.
+
+Capture labels and next actions are shorter. The audio replacement warning stays visible, photo-free reading remains explicit, and clearing a draft distinguishes the complete current draft from all saved books that remain. Library thumbnails do not persist original photos. Privacy details and audit history remain available in expandable sections.
+
+Validation: 48 core checks + 39 Node integration checks + 64 browser checks passed. The final library button-color adjustment was followed by a passing rerun of the five v28 browser cases. New checks cover manual-theme persistence during an in-flight extraction, four review states, saved-artwork covers after reload, selected AA text-color combinations, and 320/390/1280px layouts. Browser model responses are mocked; these results do not certify live model quality or a complete accessibility audit. The release is identified by cache `taw-shell-v28` and footer `build: warm-paper (shell v28)`.
+
 ## Reviewed workflow (v17)
 
 The new workflow separates confirmation from story inclusion. Confirm only the memo passages you need; unopened photo observations remain unused. Confirmed cards have a **Use in this story** checkbox. Photo observations, when explicitly used, appear separately in a collapsed source section, not woven into the memoir.
@@ -71,7 +79,7 @@ Unconfirmed facts cannot reach the child. This guarantee is enforced in determin
 
 The confirmation boundary is not a prompt-time promise — it is re-verified on every build by an automated test harness (`node tests/harness.mjs`), built to be falsifiable: if the boundary were broken, the suite would FAIL. It drives the app with adversarial inputs — an extraction response reusing an old fact ID, NFD-normalized leak bypasses, sentences citing the rejected fact — and judges every served sentence and every synthesis request body against an independent oracle derived from the fixture, never from the app's own validator.
 
-On the current build (`a0d8f8a`, v26):
+On the recorded v26 baseline (`a0d8f8a`):
 
 - **Test Suite Total: 146/146 PASS**
   - Core unit tests (`node tests/core.test.mjs`): 48/48 PASS

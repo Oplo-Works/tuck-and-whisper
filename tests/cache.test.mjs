@@ -8,6 +8,7 @@ test('shell CACHE and footer match; each script is precached, user media is abse
   assert.equal(version, Number(html.match(/shell v(\d+)/)[1]));
   const shell = sw.match(/const SHELL = \[([^\]]+)\]/)[1];
   for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) { assert.ok(shell.includes("'./" + src + "'"), src); assert.ok(fs.existsSync('web/' + src)); }
+  for (const [, href] of html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)) { assert.ok(shell.includes("'./" + href + "'"), href); assert.ok(fs.existsSync('web/' + href)); }
   assert.doesNotMatch(shell, /8940|data:|blob:|\.jpe?g|\.png|\.webp/);
   const status = execFileSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf8' });
   if (/^web\//m.test(status)) {

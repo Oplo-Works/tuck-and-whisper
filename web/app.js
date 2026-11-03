@@ -113,6 +113,7 @@
   function translate() {
     document.documentElement.lang = I.getLanguage(); document.documentElement.dir = I.languageInfo(I.getLanguage())?.rtl ? 'rtl' : 'ltr';
     for (const el of document.querySelectorAll('[data-copy]')) el.textContent = t(el.dataset.copy);
+    if ($('save-status').textContent) $('save-status').textContent = t('saved');
     $('language-note').hidden = ['ko', 'en'].includes(I.getLanguage());
     for (const kind of ['people', 'animals']) {
       const select = $('identity-' + kind); select.replaceChildren();
@@ -125,12 +126,20 @@
   function clearTestimony() { $('testimony-input').value = ''; }
   function candidate(c) {
     const box = node('div', undefined, 'candidate-card'); box.dataset.factId = c.id;
+    const state = c.decision === 'confirmed' ? (c.included ? 'statusIncluded' : 'statusExcluded') : c.decision === 'rejected' ? 'statusRejected' : 'statusUnreviewed';
+    box.dataset.decision = c.decision; box.dataset.included = String(c.included);
+    box.classList.toggle('is-confirmed', c.decision === 'confirmed'); box.classList.toggle('is-rejected', c.decision === 'rejected');
+    box.classList.toggle('is-excluded', c.decision === 'confirmed' && !c.included);
+    const badge = node('span', t(state), 'state-badge'); badge.prepend(window.TawUI.icon(c.decision === 'confirmed' ? 'check' : c.decision === 'rejected' ? 'cross' : 'clock')); box.append(badge);
     box.append(node('p', c.text, 'candidate-text'), node('p', t(c.source === 'memo' ? 'sourceMemo' : 'sourcePhoto'), 'source'));
     if (!c.grounded) box.append(node('p', t('ungrounded'), 'notice'));
     const yes = node('button', t('confirm'), c.decision === 'confirmed' ? 'primary' : ''); yes.disabled = !c.grounded;
-    yes.onclick = () => change(W.decide(record, c.id, 'confirmed'));
-    const no = node('button', t('reject'), c.decision === 'rejected' ? 'primary' : ''); no.onclick = () => change(W.decide(record, c.id, 'rejected'));
-    box.append(yes, no);
+    yes.dataset.icon = 'check'; yes.dataset.decision = 'confirmed'; yes.setAttribute('aria-pressed', String(c.decision === 'confirmed'));
+    yes.onclick = () => { change(W.decide(record, c.id, 'confirmed')); document.querySelector('[data-fact-id="' + c.id + '"] button[data-decision="confirmed"]')?.focus(); };
+    const no = node('button', t('reject'), c.decision === 'rejected' ? 'primary' : '');
+    no.dataset.icon = 'cross'; no.dataset.decision = 'rejected'; no.setAttribute('aria-pressed', String(c.decision === 'rejected'));
+    no.onclick = () => { change(W.decide(record, c.id, 'rejected')); document.querySelector('[data-fact-id="' + c.id + '"] button[data-decision="rejected"]')?.focus(); };
+    const actions = node('div', undefined, 'candidate-actions'); actions.append(yes, no); box.append(actions);
     if (c.decision === 'confirmed') {
       const label = node('label', undefined, 'use'), check = node('input'); check.type = 'checkbox'; check.checked = c.included; check.disabled = !c.grounded;
       check.onchange = () => { const id = c.id; change(W.include(record, id, check.checked)); document.querySelector('[data-fact-id="' + id + '"] input')?.focus(); };
@@ -251,6 +260,7 @@
     if (screen === 'preview') audit($('preview-audit'));
     if (screen === 'bedtime') audit($('bedtime-audit'));
     if (window.TawBooksUI) window.TawBooksUI.render();
+    window.TawUI.render(screen, t);
   }
   async function extract() {
     if (running.extract || !record.memoText.trim()) return;
@@ -369,6 +379,12 @@
     for (const item of I.languages()) { const option = node('option', item.name); option.value = item.code; $('lang-select').append(option); }
     $('lang-select').value = I.getLanguage(); translate();
     $('lang-select').onchange = () => { I.setLanguage($('lang-select').value); localStorage.setItem('taw-lang', I.getLanguage()); translate(); render(); };
+    $('theme-toggle').onclick = () => {
+      const theme = document.documentElement.dataset.theme === 'dusk' ? 'paper' : 'dusk';
+      document.documentElement.dataset.theme = theme;
+      try { localStorage.setItem('taw-theme', theme); } catch { /* Reading still works when preference storage is unavailable. */ }
+      window.TawUI.render(screen, t);
+    };
     $('memo-input').oninput = () => change(W.input(record, $('memo-input').value));
     $('photo-input').onchange = () => { if (photoURL) URL.revokeObjectURL(photoURL); photoFile = $('photo-input').files[0] || null; photoData = null; photoURL = photoFile ? URL.createObjectURL(photoFile) : null; change(W.input(record, record.memoText)); };
     $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
