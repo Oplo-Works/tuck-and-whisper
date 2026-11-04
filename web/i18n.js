@@ -3097,7 +3097,7 @@
 
   // 테이블에 실제로 있는 언어만 반환 — 선택 메뉴가 이 목록을 그대로 쓴다.
   function languages() {
-    return Object.keys(TABLE).map(function (code) {
+    return Object.keys(TABLE).sort(function (a, b) { return a === "en" ? -1 : b === "en" ? 1 : (META[a]?.name || a).localeCompare(META[b]?.name || b, "en", { sensitivity: "base" }); }).map(function (code) {
       const m = META[code] || {};
       return { code: code, name: m.name || code, bias: m.bias || code, rtl: !!m.rtl };
     });

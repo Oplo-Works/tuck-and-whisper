@@ -24,6 +24,9 @@ async function boot(page, hooks = {}) {
     if (system.startsWith('Extract')) {
       if (hooks.extract) await hooks.extract.promise;
       result = { candidates: (hooks.passages || passages).map(text => ({ text, quote: text, source: 'memo', grade: 'B' })).concat({ text: '사진에 작은 강아지가 보여요.', source: 'photo', grade: 'C' }), unknowns: ['기분은 어떨까?'] };
+    } else if (system.startsWith('Translate')) {
+      const input = JSON.parse(body.messages[1].content);
+      result = { title: '[' + input.targetLanguage + '] ' + input.title, paragraphs: input.paragraphs.map(lines => lines.map(l => '[' + input.targetLanguage + '] ' + l)), question: input.question ? '[' + input.targetLanguage + '] ' + input.question : '' };
     } else {
       if (system.includes('bedtime') && hooks.story) await hooks.story.promise;
       if (system.includes('briefing') && hooks.briefing) await hooks.briefing.promise;
@@ -344,7 +347,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: voice-ready-clarity (shell v44)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: saved-story-translate (shell v45)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -1039,7 +1042,7 @@ test('v37 language changes refresh empty-library UI and save feedback without tr
   await boot(page); await page.locator('#nav-library').click(); await setLanguage(page, 'en');
   await expect(page.locator('#books')).toContainText('No saved stories yet');
   await expect(page.locator('#books button')).toHaveText('Go to capture');
-  await expect(page.locator('#lang-select optgroup').nth(1)).toHaveAttribute('label', 'Other languages · interface in English');
+  await expect(page.locator('#lang-select optgroup')).toHaveCount(0); await expect(page.locator('#lang-select option').first()).toHaveText('English');
   await expect(page.locator('#lang-select option')).toHaveCount(25);
   await setLanguage(page, 'ko'); await page.locator('#books button').click(); await reading(page);
   await expect(page.locator('#save-status')).toHaveText('초안 자동 저장됨');
@@ -1305,11 +1308,33 @@ test('v42 refresh reset failure preserves the complete draft and saved book', as
   await boot(page); await reading(page, true);
   await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const books = await savedBooks(page);
-  await page.route('**/storage.js?v=44', async route => {
+  await page.route('**/storage.js?v=45', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()) + '\nTawStorage.clearArchived = async () => { throw new Error("Synthetic reset failure"); };' });
   });
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('#memo-input')).toHaveValue(memo); await expect(page.locator('#storage-warning')).toBeVisible();
   expect(await savedBooks(page)).toEqual(books);
+});
+test('v45 language menu lists English first then alphabetical without optgroup, and saved stories convert language and restore original', async ({ page }) => {
+  await boot(page);
+  await expect(page.locator('#lang-select optgroup')).toHaveCount(0);
+  const names = await page.locator('#lang-select option').allTextContents();
+  expect(names[0]).toBe('English');
+  const rest = names.slice(1);
+  expect(rest).toEqual([...rest].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
+  await reading(page, true);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  await page.locator('#nav-library').click(); await setLanguage(page, 'en');
+  await expect(page.locator('#books .book-name')).toContainText(passages[0]);
+  await page.locator('#books .book-open').click(); await expect(page.locator('#book-dialog')).toBeVisible();
+  await expect(page.locator('#book-lang-select')).toHaveValue('en');
+  await page.locator('#translate-book').click();
+  await expect(page.locator('#book-content h3')).toContainText('[English]');
+  await expect(page.locator('#book-content')).toContainText('[English] ' + passages[0]);
+  await expect(page.locator('#book-translate-status')).toContainText('Converted · English');
+  await expect(page.locator('#books .book-name')).toContainText('[English]');
+  await page.locator('#original-book').click();
+  await expect(page.locator('#book-content h3')).toHaveText(passages[0]);
+  await expect(page.locator('#books .book-name')).toHaveText(passages[0]);
 });

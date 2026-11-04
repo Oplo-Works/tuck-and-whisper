@@ -349,3 +349,11 @@ html[data-theme] #voice-tools input[type=file]::file-selector-button{background:
 html[data-theme] #transcribe-btn:disabled{opacity:.38;background:var(--inset);color:var(--dim);border-color:var(--line);border-style:dashed;box-shadow:none;text-shadow:none}
 html[data-theme=dusk] #transcribe-btn:not(:disabled){background:linear-gradient(115deg,#a9ddd6,#c9c6f0 55%,#ebbdd8);color:#1d1a2e;border:2px solid #a9ddd6;box-shadow:0 10px 26px #070a1c66,0 0 0 3px #9fd6ce40;text-shadow:none}
 html[data-theme=paper] #transcribe-btn:not(:disabled){background:linear-gradient(115deg,#2e6860,#3d7a72 58%,#6e4d63);color:#fffdf9;border:2px solid #23524b;box-shadow:0 8px 20px #2e686033,0 0 0 3px #2e686024;text-shadow:none}
+.book-tile-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin-top:8px}
+.book-tile-actions button{margin:0;font-size:12px;min-height:40px;padding:6px 10px}
+.book-tile-actions .book-delete{border-color:transparent;background:transparent}
+.book-translate-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--inset)}
+html[data-theme] #book-lang-select{flex:1 1 130px;width:auto;max-width:none;min-height:40px;margin:0;padding:6px 8px;font-size:14px;background:var(--card)}
+.book-translate-bar button{margin:0;min-height:40px;padding:8px 12px;font-size:13px}
+#book-translate-status{width:100%;margin:0;font-size:12px}
+#book-translate-status:empty{display:none}

@@ -548,12 +548,12 @@
   async function init() {
     const lang = localStorage.getItem('taw-lang') || navigator.language.split('-')[0];
     I.setLanguage(lang);
-    for (const [key, translated] of [['translatedLanguages', true], ['fallbackLanguages', false]]) {
-      const group = node('optgroup'); group.dataset.label = key;
-      for (const item of I.languages().filter(item => ['ko', 'en'].includes(item.code) === translated)) {
-        const option = node('option', item.name); option.value = item.code; group.append(option);
+    for (const item of I.languages()) {
+      const option = node('option', item.name); option.value = item.code; $('lang-select').append(option);
+      if (false) {
+
       }
-      $('lang-select').append(group);
+
     }
     $('lang-select').value = I.getLanguage(); translate();
     $('lang-select').onchange = () => { I.setLanguage($('lang-select').value); localStorage.setItem('taw-lang', I.getLanguage()); translate(); render(); };

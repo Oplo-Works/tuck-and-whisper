@@ -18,6 +18,10 @@ Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 
 
 Design for iPhone and Android phone sizes first. Preserve the cozy night palette, gentle glow, and comfortable reading space while removing unused layout space. Preserve existing features and keep their purpose apparent through clear labels and familiar controls. Keep frequent actions, including language selection and theme switching, directly accessible; do not add dialogs or extra clicks merely to save space.
 
+## Saved story language conversion and alphabetical language selector (shell v45)
+
+Saved stories in the library and reading dialog now include a language conversion control (`Convert language` / `언어 변환`) with a `Show original` (`원문 보기`) toggle, allowing a saved story's title, paragraphs, and question to be converted into any selected language while preserving illustrations and keeping the original snapshot intact. The language selector lists `English` first at the top without group headers and sorts all other languages alphabetically. Release: `taw-shell-v45`, footer `build: saved-story-translate (shell v45)`.
+
 ## Voice recording ready clarity (shell v44)
 
 Stopping a local recording displays a confirmation badge (`Recording saved · mm:ss` / `녹음 저장됨 · mm:ss`) near the top controls so the return of the Start recording button is not mistaken for a lost note. The status message provides directional guidance toward Convert to Text, which becomes the primary CTA with enhanced gradient/glow contrast when enabled, a dimmed dashed state when disabled, and automatic focus and scroll into view when outside the viewport. The overwrite warning appears only before converting when Today's Note already has text, and stays hidden when converting into an empty note or immediately after conversion. Recording limits, codecs, and transcription endpoints remain unchanged. Release: `taw-shell-v44`, footer `build: voice-ready-clarity (shell v44)`.

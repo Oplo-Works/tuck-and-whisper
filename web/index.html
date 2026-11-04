@@ -7,8 +7,8 @@
 <title>Tuck and Whisper</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('taw-theme')==='paper'?'paper':'dusk'}catch{document.documentElement.dataset.theme='dusk'}</script>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon.svg?v=44" type="image/svg+xml">
-<link rel="stylesheet" href="design.css?v=44"></head><body>
+<link rel="icon" href="icon.svg?v=45" type="image/svg+xml">
+<link rel="stylesheet" href="design.css?v=45"></head><body>
 <header><div class="brand-row"><div class="brand"><span class="brand-symbol" data-icon="together" aria-hidden="true"></span><h1>Tuck and Whisper</h1></div><button id="theme-toggle" type="button" aria-pressed="false"><span></span></button></div><div class="header-context"><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></div></header>
 <main>
 <p id="language-note" class="hint" hidden data-copy="translation"></p>
@@ -56,8 +56,8 @@
 <div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p class="hint" data-copy="bookPolicy"></p></div>
 </div><div id="reading-actions" class="sticky-actions"><p id="book-save-status" role="status"></p><div class="action-row"><button id="save-book" class="primary" data-copy="saveBook" data-icon="save"></button><button id="export-book" data-copy="export" data-icon="download"></button></div></div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><details id="library-management"><summary data-copy="manageLibrary"></summary><button id="delete-all" data-copy="deleteAll" data-icon="trash"></button></details></div></section>
-<dialog id="book-dialog" aria-labelledby="saved-book-title"><div class="dialog-controls"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download" data-icon="download"></button></div></div><p id="book-snapshot" class="hint" hidden data-copy="past"></p><details id="export-info"><summary data-copy="exportDetails"></summary><p id="book-note" class="hint" data-copy="exportHint"></p></details><div id="book-content"></div></dialog>
-</main><footer>build: voice-ready-clarity (shell v44)</footer>
-<script src="core.js?v=44"></script><script src="workflow.js?v=44"></script><script src="storage.js?v=44"></script><script src="books.js?v=44"></script><script src="books-ui.js?v=44"></script><script src="i18n.js?v=44"></script><script src="copy.js?v=44"></script><script src="ui.js?v=44"></script>
-<script src="api.js?v=44"></script><script src="recorder.js?v=44"></script><script src="app.js?v=44"></script>
+<dialog id="book-dialog" aria-labelledby="saved-book-title"><div class="dialog-controls"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download" data-icon="download"></button></div></div><div id="book-translate-bar" class="book-translate-bar" hidden><select id="book-lang-select" aria-label="Target language"></select><button id="translate-book" type="button" data-copy="translateBook" data-icon="talk"></button><button id="original-book" type="button" data-copy="showOriginal" hidden></button><span id="book-translate-status" class="hint" role="status" aria-live="polite"></span></div><p id="book-snapshot" class="hint" hidden data-copy="past"></p><details id="export-info"><summary data-copy="exportDetails"></summary><p id="book-note" class="hint" data-copy="exportHint"></p></details><div id="book-content"></div></dialog>
+</main><footer>build: saved-story-translate (shell v45)</footer>
+<script src="core.js?v=45"></script><script src="workflow.js?v=45"></script><script src="storage.js?v=45"></script><script src="books.js?v=45"></script><script src="books-ui.js?v=45"></script><script src="i18n.js?v=45"></script><script src="copy.js?v=45"></script><script src="ui.js?v=45"></script>
+<script src="api.js?v=45"></script><script src="recorder.js?v=45"></script><script src="app.js?v=45"></script>
 </body></html>

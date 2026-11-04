@@ -126,7 +126,7 @@
     deleteConfirm: ['이 브라우저의 현재 기록과 모든 보관본을 삭제할까요?', 'Delete the current record and all saved books in this browser?'],
     past: ['보관 당시의 이야기 — 현재 기록과 별개예요', 'Saved snapshot — separate from your current record'],
     export: ['파일 다운로드', 'Download file'], exportHint: ['이야기·질문·확인한 그림만 포함해요. 원본 사진·메모·전체 근거·아이의 말은 제외해요. 읽기용 파일이며 전체 검증 기록은 아니에요. 전달한 파일은 앱에서 회수할 수 없어요.', 'Includes story, question and approved artwork only. Excludes original photo, memo, full sources and child responses. This is a reading copy, not an audit record. Shared files cannot be recalled.'],
-    download: ['다운로드', 'Download'], cancel: ['취소', 'Cancel'], textOnly: ['그림 없이 내보내기', 'Export without artwork']
+    download: ['다운로드', 'Download'], cancel: ['취소', 'Cancel'], textOnly: ['그림 없이 내보내기', 'Export without artwork'], translateBook: ['언어 변환', 'Convert language'], translatingBook: ['이야기 언어를 변환하고 있어요…', 'Converting story language…'], translatedBook: ['변환됨 · {lang}', 'Converted · {lang}'], showOriginal: ['원문 보기', 'Show original'], bookLangLabel: ['변환할 언어', 'Target language']
   };
   window.TawCopy = function (key, lang, vars = {}) {
     let text = strings[key]?.[lang === 'ko' ? 0 : 1] || key;
