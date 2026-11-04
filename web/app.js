@@ -140,6 +140,7 @@
   function paragraphArtAllowed() { return W.imageAllowed(record) && hasArtAnchor(); }
   function change(next) { if (next === record) return; invalidate(); record = next; persist(); render(); }
   function show(name, options = {}) {
+    if (name !== 'capture') window.TawRecorder?.stop();
     if (name === 'review' && !record.candidates.length) name = 'capture';
     if (navigationReady && options.navigation !== 'none' && name !== screen) {
       history.replaceState({ ...history.state, scroll: window.scrollY }, '');
@@ -193,7 +194,8 @@
   }
   function image(url) { const el = node('img', undefined, 'art'); el.src = url; el.alt = t('photo'); return el; }
   function clearPhoto() { if (photoURL) URL.revokeObjectURL(photoURL); photoURL = null; photoData = null; photoFile = null; $('photo-input').value = ''; }
-  function clearVoice() { $('voice-input').value = ''; voiceConverted = false; }
+  function clearVoice() { window.TawRecorder?.clear(); $('voice-input').value = ''; voiceConverted = false; }
+  function voiceFile() { return window.TawRecorder?.getFile() || $('voice-input').files[0]; }
   function updatePhoto(file) {
     if (photoURL) URL.revokeObjectURL(photoURL);
     photoFile = file; photoData = null; photoURL = file ? URL.createObjectURL(file) : null;
@@ -323,11 +325,12 @@
     if (screen === 'library') next = 'nextLibrary';
     if (blocked) next = conflicted ? 'conflict' : corrupted ? 'corrupt' : 'unsaved';
     $('next-action').textContent = t(next);
-    $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
+    $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !!window.TawRecorder?.busy() || !voiceFile();
+    window.TawRecorder?.render();
     $('extract-progress').textContent = running.extract ? t('extractBusy') : '';
     $('extract-btn').setAttribute('aria-busy', String(!!running.extract));
     $('voice-progress').hidden = !running.voice;
-    $('voice-warning').hidden = !$('voice-input').files.length || !record.memoText.trim();
+    $('voice-warning').hidden = !voiceFile() || !record.memoText.trim();
     $('voice-check').hidden = !voiceConverted;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
     $('photo-input').setAttribute('aria-label', t(photoFile ? 'changePhoto' : 'choosePhoto'));
@@ -434,10 +437,16 @@
     show('bedtime');
     if (W.prepared(record) && !W.validOutput(record, record.story)) generate('story');
   }
+  async function reopenArchivedDraft() {
+    await queue;
+    const stored = await S.load(db);
+    if (stored.archived && stored.version === storageVersion) await persist();
+  }
   async function style() {
     if (running.style || !photoFile || !W.imageAllowed(record)) return;
     const token = jobs.begin('style'), file = photoFile; running.style = true; statuses.style = ''; render();
     try {
+      await reopenArchivedDraft();
       const data = photoData || await API.photo(file);
       if (!jobs.current(token)) return;
       const result = await retainPicture(await API.style(data));
@@ -454,6 +463,7 @@
     const token = jobs.begin('para' + index), text = p.text;
     paragraphBusy[index] = true; paragraphFailed[index] = false; render();
     try {
+      await reopenArchivedDraft();
       if (photoFile && !photoData && !acceptedArt) photoData = await API.photo(photoFile);
       if (!jobs.current(token)) return;
       // Blocked before the call: without an anchor no /api/image request
@@ -477,16 +487,32 @@
     }
   }
   async function voice() {
-    const file = $('voice-input').files[0]; if (!file || running.voice) return;
+    const file = voiceFile(); if (!file || running.voice || window.TawRecorder?.busy()) return;
     const token = jobs.begin('voice'); running.voice = true; message(t('busy')); render();
     try {
       const text = await API.voice(file, I.languageInfo(I.getLanguage()).bias);
       if (!jobs.current(token)) return;
       $('memo-input').value = text; voiceConverted = true; change(W.input(record, text));
-    } catch (e) { if (jobs.current(token)) fail(e); }
+    } catch (e) { if (jobs.current(token)) fail(e.code === 'audio-decode-failed' ? Error(t('voiceDecodeFailed')) : e); }
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
-  async function load() {
+  async function findLegacyArchive(stored) {
+    // Older releases have no completion marker. Match the entire saved reading,
+    // including image bytes; uncertainty keeps the draft rather than clearing it.
+    const original = record, B = window.TawBooks;
+    if (Object.hasOwn(stored, 'archived') || !W.validOutput(original, original.story) || (art && art !== acceptedArt)) return;
+    const matches = (await S.books(db)).filter(book => book.dayId === original.dayId && book.revision === original.contentRevision &&
+      !original.testimony.some(item => item.at > book.createdAt));
+    if (!matches.length) return;
+    const snapshot = B.snapshot(original, await B.artwork(acceptedArt), W, await Promise.all(paragraphArt.map(url => B.artwork(url))));
+    for (const book of matches) {
+      const candidate = { ...snapshot, id: book.id, createdAt: book.createdAt, order: book.order };
+      if (await B.same(candidate, book) && record === original && await S.markArchived(db, book.id, stored.version)) {
+        stored.archived = { bookId: book.id }; return;
+      }
+    }
+  }
+  async function load(clearArchived = false) {
     synced = false;
     const stored = await S.load(db); const legacy = localStorage.getItem('taw-day-v1');
     // Adopt the stored version only together with a record that passed sanitize.
@@ -507,6 +533,16 @@
     storageVersion = stored.version; record = next; synced = true;
     restoreArtwork(stored.artwork);
     loaded = true; blocked = false; conflicted = false; corrupted = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
+    if (clearArchived && !Object.hasOwn(stored, 'archived')) {
+      try { await findLegacyArchive(stored); } catch (e) { console.warn('[taw] keeping legacy draft: archive could not be verified'); }
+    }
+    if (clearArchived && stored.archived) {
+      try {
+        const fresh = await S.clearArchived(db, storageVersion, W.create());
+        if (!fresh) { await load(); return; }
+        storageVersion = fresh.version; record = fresh.record; restoreArtwork(null); $('memo-input').value = '';
+      } catch (e) { storageWarning(false, report('save', e)); }
+    }
     if (!stored.record) await persist();
   }
   async function init() {
@@ -530,7 +566,9 @@
     $('memo-input').oninput = () => { if ($('memo-input').value !== record.memoText) change(W.input(record, $('memo-input').value)); };
     $('photo-input').onchange = () => updatePhoto($('photo-input').files[0] || null);
     $('remove-photo').onclick = () => { updatePhoto(null); $('photo-input').focus(); };
-    $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
+    $('voice-input').onchange = () => { window.TawRecorder?.clear(); jobs.begin('voice'); running.voice = false; voiceConverted = false; render(); };
+    window.TawRecorder?.init({ t, changed: render, converting: () => !!running.voice,
+      replaced: () => { $('voice-input').value = ''; jobs.begin('voice'); running.voice = false; voiceConverted = false; } });
     $('extract-btn').onclick = extract; $('transcribe-btn').onclick = voice;
     $('prepare-btn').onclick = preview;
     $('nav-preview').onclick = () => W.validOutput(record, record.story) ? readTogether() : preview();
@@ -557,13 +595,14 @@
     $('reload-record').onclick = async () => { invalidate(); clearPhoto(); clearVoice(); clearTestimony(); await queue; try { await load(); show('capture'); } catch (e) { storageWarning(false, report('load', e)); } };
     $('retry-save').onclick = retrySave; $('start-fresh').onclick = startFresh;
     let stage = 'open';
-    try { db = await S.open(); stage = 'load'; await load(); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
+    try { db = await S.open(); stage = 'load'; await load(performance.getEntriesByType('navigation')[0]?.type === 'reload'); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
     window.addEventListener('beforeunload', event => { if (blocked) { event.preventDefault(); event.returnValue = ''; } });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
     render();
     // Extension boundary for local books. No service credentials or mutable globals exposed.
     if (window.TawBooksUI) window.TawBooksUI.init({ getRecord: () => record, getDB: () => db, getArt: () => W.imageAllowed(record) ? acceptedArt : null,
       getParagraphArts: () => W.imageAllowed(record) ? paragraphArt.slice() : [],
+      hasUnarchivedArtwork: () => !!(art && art !== acceptedArt) || !!running.style || paragraphBusy.some(Boolean),
       setBookDetails: patch => { record = W.bookDetails(record, patch); persist(); render(); },
       getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download, openDialog, closeDialog,
       reset: async () => {

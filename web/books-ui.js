@@ -40,9 +40,12 @@
     try {
       const book = await currentBook(); await app.flush();
       if (app.isBlocked()) throw Error('Unsaved changes');
-      await S.saveBook(app.getDB(), book, app.getVersion());
+      const savedVersion = app.getVersion();
+      await S.saveBook(app.getDB(), book, savedVersion);
       const readback = (await S.books(app.getDB())).find(b => b.id === book.id);
       if (!await B.same(readback, book)) throw Error('Book verification failed');
+      // Mark only a verified, unchanged draft. A later autosave removes this marker.
+      if (!app.hasUnarchivedArtwork()) await S.markArchived(app.getDB(), book.id, savedVersion);
       feedbackKey = book.artwork || book.paragraphs.some(p => p.artwork) ? 'bookSaved' : 'bookSavedText';
     } catch (e) {
       feedbackKey = 'bookSaveFailed'; feedbackVars = { reason: e.cause?.name || e.message };

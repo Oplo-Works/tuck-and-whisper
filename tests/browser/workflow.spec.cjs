@@ -344,7 +344,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: together-reading-logo (shell v41)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: voice-and-fresh-drafts (shell v42)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -684,21 +684,15 @@ test('v23 (a) without a photo, paragraph slots are text-only with guidance, no i
   for (const p of passages) expect(html).toContain(p); expect(html).not.toContain('data:image/');
   expect(imageRequests(requests)).toHaveLength(0);
 });
-test('v23 (c) after reload the photo anchor is gone: generated pictures restore, no new image call, and a saved book keeps its pairs', async ({ page }) => {
+test('v23 (c) archived draft clears on reload without new image calls; saved book keeps every pair', async ({ page }) => {
   const requests = await boot(page); await reading(page, true);
   await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
   await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const callsBefore = imageRequests(requests).length; expect(callsBefore).toBeGreaterThan(0);
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('#photo-status')).toHaveText(''); // original photo is session-only
-  await page.locator('#nav-preview').click();
-  await expect(page.locator('#story')).toContainText(passages[0]); // prepared text story still reads
-  await expect(page.locator('#para-art-all')).toBeEnabled();
-  for (let i = 0; i < 3; i++) {
-    await expect(page.locator('#story .para-art').nth(i)).toBeVisible();
-    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(1);
-    await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(1);
-  }
+  await expect(page.locator('#memo-input')).toHaveValue('');
+  expect((await stored(page)).story).toBeNull();
   expect(imageRequests(requests)).toHaveLength(callsBefore); // nothing new went out after the anchor vanished
   // The book saved before the reload keeps every paragraph+illustration pair.
   await page.locator('#nav-capture').click(); await page.locator('#nav-library').click();
@@ -760,8 +754,9 @@ for (const kind of ['illustrated', 'text-only', 'mixed']) test('v25 durable day 
     if (kind === 'text-only') expect(imageRequests(requests)).toHaveLength(0);
     await page.reload(); await page.waitForFunction(() => window.TAW_READY);
     expect((await savedBooks(page))[0]).toEqual(expected);
-    await page.locator('#nav-preview').click();
-    await expect(page.locator('#reading-title')).toHaveText(expected.title); await expect(page.locator('#reading-date')).toHaveText(expected.eventDate);
+    await expect(page.locator('#memo-input')).toHaveValue('');
+    await page.locator('#nav-library').click();
+    await expect(page.locator('#books .book-name')).toHaveText(expected.title); await expect(page.locator('#books .book-date')).toHaveText(expected.eventDate);
     await context.close(); context = await launch(); page = context.pages()[0]; await boot(page);
     expect((await savedBooks(page))[0]).toEqual(expected);
     // Current input changes cannot change the saved book or prevent its export.
@@ -1214,4 +1209,107 @@ test('v39 failed local artwork write keeps the result in memory and retry restor
   await page.reload(); await page.waitForFunction(() => window.TAW_READY); await page.locator('#nav-preview').click();
   await expect(page.locator('#story .para-art img')).toHaveCount(1);
   expect(imageRequests(requests)).toHaveLength(count);
+});
+
+test('v42 mobile archived draft stays through sections and back, then refresh starts blank and keeps the book', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const requests = await boot(page); await reading(page, true);
+  await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  const before = await savedBooks(page), images = imageRequests(requests).length;
+  for (const target of ['#nav-capture', '#nav-review', '#nav-library']) {
+    await page.locator(target).click(); await page.locator('#nav-preview').click();
+    await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  }
+  await page.goBack(); await page.goForward(); await page.locator('#nav-capture').click();
+  await expect(page.locator('#memo-input')).toHaveValue(memo);
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue(''); expect((await stored(page)).story).toBeNull();
+  expect(await savedBooks(page)).toEqual(before);
+  await page.locator('#nav-library').click(); await page.locator('#books .book-open').click();
+  await expect(page.locator('#book-content img')).toHaveCount(4);
+  await expect(page.locator('#book-content')).toContainText(passages[0]);
+  expect(imageRequests(requests)).toHaveLength(images);
+});
+
+for (const edit of ['memo', 'question', 'artwork', 'pending artwork', 'unapproved artwork']) test('v42 unfinished changes after archive survive refresh: ' + edit, async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  const before = await savedBooks(page);
+  if (edit === 'memo') { await page.locator('#nav-capture').click(); await page.locator('#memo-input').fill('A new unfinished synthetic note'); }
+  if (edit === 'question') { await page.locator('#edit-reading').click(); await page.locator('#question-text').fill('An edited question?'); }
+  if (edit === 'artwork') { await page.locator('#story .para-art button').first().click(); await expect(page.locator('#story .para-art img')).toHaveCount(1); }
+  if (edit === 'unapproved artwork') {
+    await page.locator('#style-btn').click(); await expect(page.locator('#style-btn')).toBeEnabled();
+    await expect(page.locator('#art-preview img')).toHaveCount(1);
+    await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  }
+  if (edit === 'pending artwork') {
+    await page.route('**/api/image', () => {});
+    await page.locator('#story .para-art button').first().click();
+    await expect.poll(() => page.evaluate(async () => { const db = await TawStorage.open(); const e = await TawStorage.load(db); db.close(); return e.archived; })).toBeNull();
+  } else await expect(page.locator('#save-status')).toContainText('저장됨');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue(edit === 'memo' ? 'A new unfinished synthetic note' : memo);
+  if (edit !== 'unapproved artwork') expect(await savedBooks(page)).toEqual(before);
+  if (edit === 'artwork') { await page.locator('#nav-preview').click(); await expect(page.locator('#story .para-art img')).toHaveCount(1); }
+  if (edit === 'question') expect((await stored(page)).question.text).toBe('An edited question?');
+  if (edit === 'unapproved artwork') { await page.locator('#nav-preview').click(); await expect(page.locator('#art-preview img')).toHaveCount(1); }
+});
+
+for (const failure of ['write', 'verification']) test('v42 failed archive does not clear the draft on refresh: ' + failure, async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await page.evaluate(failure => {
+    if (failure === 'write') TawStorage.saveBook = async () => { throw Error('Synthetic write failure'); };
+    else { const read = TawStorage.books; TawStorage.books = async db => { const books = await read(db); books[0].lines[0] = 'Synthetic corrupt readback'; return books; }; }
+  }, failure);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('확인하지 못했어요');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue(memo);
+  await page.locator('#nav-preview').click(); await expect(page.locator('#reading-art img')).toHaveCount(1);
+});
+
+for (const changed of [false, true]) test('v42 legacy v41 draft clears only with an exact saved reading match: ' + changed, async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  if (changed) { await page.locator('#edit-reading').click(); await page.locator('#question-text').fill('New unsaved legacy question?'); await expect(page.locator('#save-status')).toContainText('저장됨'); }
+  await page.evaluate(async () => {
+    const db = await TawStorage.open(); await new Promise((resolve, reject) => {
+      const tx = db.transaction('current', 'readwrite'), store = tx.objectStore('current'), req = store.get('day');
+      req.onsuccess = () => { const entry = req.result; delete entry.archived; store.put(entry, 'day'); };
+      tx.oncomplete = resolve; tx.onabort = reject;
+    }); db.close();
+  });
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue(changed ? memo : '');
+  expect(await savedBooks(page)).toHaveLength(1);
+});
+
+test('v42 edits during archive readback cannot be marked as completed', async ({ page }) => {
+  await boot(page); await reading(page);
+  await page.evaluate(() => {
+    const read = TawStorage.books;
+    TawStorage.books = async db => { TawStorage.books = read; const books = await read(db); window.archiveReadbackReady = true; await new Promise(resolve => { window.releaseArchiveReadback = resolve; }); return books; };
+  });
+  await page.locator('#save-book').click(); await page.waitForFunction(() => window.archiveReadbackReady);
+  await page.locator('#nav-capture').click(); await page.locator('#memo-input').fill('New work during archive verification');
+  await expect(page.locator('#save-status')).toContainText('저장됨');
+  await page.evaluate(() => window.releaseArchiveReadback());
+  await expect.poll(() => page.evaluate(async () => { const db = await TawStorage.open(); const e = await TawStorage.load(db); db.close(); return e.archived; })).toBeNull();
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue('New work during archive verification');
+  expect(await savedBooks(page)).toHaveLength(1);
+});
+
+test('v42 refresh reset failure preserves the complete draft and saved book', async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  const books = await savedBooks(page);
+  await page.route('**/storage.js?v=42', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()) + '\nTawStorage.clearArchived = async () => { throw new Error("Synthetic reset failure"); };' });
+  });
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('#memo-input')).toHaveValue(memo); await expect(page.locator('#storage-warning')).toBeVisible();
+  expect(await savedBooks(page)).toEqual(books);
 });

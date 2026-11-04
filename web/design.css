@@ -334,3 +334,9 @@ html[data-theme] .card{background:#faf7ef;color:#292d35;border:0;box-shadow:none
 .art{break-inside:avoid}
 main{padding:0;max-width:none}
 }
+/* Microphone controls share the existing mobile action rhythm. */
+.recording-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0 0}
+#recording-timer{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text);font-size:14px}
+#recording-status:empty{display:none}
+.recording-controls.is-recording #stop-recording{border-color:var(--text);box-shadow:0 0 16px #df91b32b}
+#voice-tools label[for=voice-input]{display:block;margin:12px 0 8px;font-weight:400}
