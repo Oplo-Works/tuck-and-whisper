@@ -18,6 +18,10 @@ Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 
 
 Design for iPhone and Android phone sizes first. Preserve the cozy night palette, gentle glow, and comfortable reading space while removing unused layout space. Preserve existing features and keep their purpose apparent through clear labels and familiar controls. Keep frequent actions, including language selection and theme switching, directly accessible; do not add dialogs or extra clicks merely to save space.
 
+## Storybook logo (shell v40)
+
+The header mark is now a simple open storybook with a small sparkle, keeping the existing warm circular badge, glow and dimensions. The favicon and installable app icon share the mark; theme controls retain their sun/moon meanings. Dusk and Paper header screenshots were visually checked. Cache consistency and mobile layout checks cover 320/360/390/430px in Chromium and WebKit.
+
 ## Retained generated artwork (shell v39)
 
 Generated illustrations are now autosaved alongside the current draft in the same IndexedDB transaction, bound to its day, source/content revision, identity decisions and exact paragraph text. Restoring a matching draft restores generated picture bytes without another model request. Original photos are still session-only. Saved books remain independent snapshots. New library images are stored as typed byte data and reconstructed as Blobs when read, avoiding a reproducible WebKit Blob-storage failure; legacy Blob books remain readable. The database version is unchanged.
