@@ -1,26 +1,26 @@
 :root{color-scheme:light;--bg:#f5f0e6;--card:#fffbf2;--inset:#eee7db;--line:#c3b8a6;--text:#302e28;--dim:#655f53;--accent:#d5b77c;--accent-text:#3d321e;--accent2:#356044;--danger:#923d36;--good-bg:#e8efe3;--bad-bg:#f9e8e1;--notice-bg:#f1e6cf;--shadow:0 12px 36px #5145290b}
 
-:root[data-theme=dusk]{color-scheme:dark;--bg:#161a2e;--card:#2a2935;--inset:#22212b;--line:#777180;--text:#f0e7d8;--dim:#c1b9b7;--accent:#d1b47d;--accent-text:#30271a;--accent2:#b7d3ba;--danger:#f0b1a5;--good-bg:#303d35;--bad-bg:#473139;--notice-bg:#3a342e;--shadow:0 12px 36px #00000012}
+:root[data-theme=dusk]{color-scheme:dark;--bg:#11162d;--card:#262840;--inset:#1c2038;--line:#686780;--text:#f5eddf;--dim:#c2c0d6;--accent:#e8b9d6;--accent-text:#28213b;--accent2:#b8decf;--danger:#ffb8b4;--good-bg:#263e38;--bad-bg:#49303f;--notice-bg:#32304b;--shadow:0 24px 64px #080b2038,inset 0 1px 0 #ffffff0a}
 
-/* Dusk only: deep-night backdrop with faint, static starlight. The stars sit on
-   the page background only; cards stay calm and opaque so text contrast and
-   the Gate-1 state colours are untouched. Warm paper is not affected. */
+/* Static CSS sky: no downloaded assets, animation or stars over reading text. */
 html[data-theme=dusk] body{background-color:var(--bg);background-image:
-  radial-gradient(1.5px 1.5px at 24px 32px, #ffffff59 50%, transparent 51%),
-  radial-gradient(1px 1px at 118px 86px, #ffffff40 50%, transparent 51%),
-  radial-gradient(1px 1px at 196px 44px, #ffe9bd52 50%, transparent 51%),
-  radial-gradient(1.5px 1.5px at 74px 148px, #ffffff38 50%, transparent 51%),
-  radial-gradient(1px 1px at 168px 176px, #ffffff4d 50%, transparent 51%);
-  background-size:220px 220px}
-/* Dusk only: the primary CTA carries the one restrained glow and a soft
-   gradient, so it stays the brightest step. Disabled buttons never glow, and
-   the glow (warm halo) stays distinct from the keyboard focus outline
-   (solid green ring) and from selection/state colours. */
-html[data-theme=dusk] button.primary{background-image:linear-gradient(180deg,#e6cd97,var(--accent));box-shadow:0 0 22px #d1b47d59,0 0 4px #d1b47d66}
+  radial-gradient(1.5px 1.5px at 28px 42px,#fff1d775 65%,transparent 75%),
+  radial-gradient(1px 1px at 174px 118px,#d7d9ff70 65%,transparent 75%),
+  radial-gradient(1px 1px at 292px 56px,#d7d9ff55 65%,transparent 75%),
+  radial-gradient(1.5px 1.5px at 110px 238px,#e8c5df55 65%,transparent 75%),
+  radial-gradient(1px 1px at 330px 302px,#fff1d760 65%,transparent 75%),
+  radial-gradient(ellipse at 0% 95%,#ae668b40,transparent 56%),
+  radial-gradient(ellipse at 100% 65%,#6962a536,transparent 55%),
+  linear-gradient(170deg,#11162d 15%,#1b2140 62%,#39304a);
+  background-size:380px 360px,380px 360px,380px 360px,380px 360px,380px 360px,100% 100%,100% 100%,100% 100%;background-attachment:fixed;min-height:100vh}
+html[data-theme=dusk] body::before{content:"";position:fixed;inset:auto 0 0;height:24vh;background:#10162c66;clip-path:polygon(0 45%,18% 55%,43% 35%,68% 64%,100% 20%,100% 100%,0 100%);pointer-events:none}
+html[data-theme=dusk] :is(header,main,footer){position:relative}
+/* A steady halo marks the next action; keyboard focus keeps its solid ring. */
+html[data-theme=dusk] button.primary{background-image:linear-gradient(110deg,#edb5d1,#cebfeb 58%,#b7dfe1);border-color:#e4c7e8;box-shadow:0 4px 20px #d99fc72e,0 0 28px #b3ace51c,inset 0 1px 0 #ffffff66}
+html[data-theme=dusk] button.primary:hover:not(:disabled){box-shadow:0 4px 26px #d99fc74d,0 0 32px #b3ace52b}
 html[data-theme=dusk] button.primary:disabled{background-image:none;box-shadow:none}
-/* Dusk only: the current step tab gets a faint halo. Inactive tabs do not glow. */
-html[data-theme=dusk] nav button[aria-current=step]{text-shadow:0 0 14px #b7d3ba73}
-html[data-theme=dusk] nav button[aria-current=step] .ui-icon{filter:drop-shadow(0 0 6px #b7d3ba66)}
+html[data-theme=dusk] nav button[aria-current=step]{text-shadow:0 0 18px #edb5d155}
+html[data-theme=dusk] nav button[aria-current=step] .ui-icon{color:#f1c6e0;filter:drop-shadow(0 0 7px #efa4cf80)}
 
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;font-size:16px;line-height:1.65}
@@ -150,6 +150,35 @@ footer .build{display:block;margin-top:10px}
 .step-count{font-size:11px;letter-spacing:.05em}
 button,summary,a{touch-action:manipulation}
 
+/* Moonlit surfaces keep the same workflow and an opaque reading canvas. */
+html[data-theme=dusk] header{padding-top:42px;padding-bottom:18px}
+html[data-theme=dusk] .brand{gap:14px}
+html[data-theme=dusk] .brand-symbol{width:48px;height:48px;flex-shrink:0;background:linear-gradient(140deg,#fff0cd,#ddc5a5);color:#494055;border-color:#fff0d5;box-shadow:0 0 28px #f5d6ad29,inset 0 0 0 4px #fff5db33}
+html[data-theme=dusk] header h1{font-size:28px;letter-spacing:-.9px;font-weight:650}
+html[data-theme=dusk] header p{font-size:15px;line-height:1.8;max-width:32em;margin-top:19px;color:#ddd3dd}
+html[data-theme=dusk] .header-tools{margin-top:22px;gap:10px}
+html[data-theme=dusk] header select{background:#262b46;border-color:#787690;border-radius:14px}
+html[data-theme=dusk] #theme-toggle{background:linear-gradient(125deg,#4c3c61,#39405d);border-color:#9e7ea5;border-radius:14px;padding-inline:15px;box-shadow:0 0 18px #dc9ec71a}
+html[data-theme=dusk] nav{gap:5px;padding:6px;margin:4px 0 18px;background:#191e35;border:1px solid #484b68;border-radius:20px}
+html[data-theme=dusk] nav button{border-bottom:0;border-radius:14px;min-height:72px;color:#bac8e8}
+html[data-theme=dusk] nav button:not(:disabled):hover{background:#30304b}
+html[data-theme=dusk] nav button[aria-current=step]{background:linear-gradient(140deg,#493652,#30344f);color:#fff0e9;box-shadow:inset 0 1px 0 #efc5e92b}
+html[data-theme=dusk] nav button[aria-current=step]::after{content:"";position:absolute;bottom:0;left:24%;right:24%;height:2px;border-radius:2px;background:linear-gradient(90deg,#eeb0d0,#bbc5f4);box-shadow:0 0 9px #eab4d170}
+html[data-theme=dusk] #next-action{color:#e5cadb;padding:0 4px 16px}
+html[data-theme=dusk] .card{border-color:#77718d;border-radius:24px;box-shadow:var(--shadow)}
+html[data-theme=dusk] .card h2{font-size:25px;letter-spacing:-.6px}
+html[data-theme=dusk] #photo-section{padding-top:15px;padding-bottom:22px}
+html[data-theme=dusk] #photo-section label,html[data-theme=dusk] #memo-section>label{margin-bottom:12px}
+html[data-theme=dusk] label>.ui-icon{color:#d8c4e8}
+html[data-theme=dusk] input[type=file]::file-selector-button{background:linear-gradient(115deg,#e7bad8,#c7c6ec 60%,#b9dbdf);color:#28213b;border-color:#dbc9e8;border-radius:12px;font-weight:600;box-shadow:0 3px 14px #bb9dce1a}
+html[data-theme=dusk] :is(textarea,input[type=text],input[type=date]){border-color:#7e7997;box-shadow:inset 0 2px 8px #080b201f;border-radius:14px}
+html[data-theme=dusk] textarea::placeholder,html[data-theme=dusk] input::placeholder{color:#b3aec5;opacity:1}
+html[data-theme=dusk] #memo-input{min-height:170px}
+html[data-theme=dusk] #extract-btn{min-height:52px;border-radius:15px;margin-bottom:0}
+html[data-theme=dusk] .reset-actions{border-top-color:#68678080}
+html[data-theme=dusk] .book-cover-empty{background:radial-gradient(ellipse at 50% 100%,#66507766,transparent 75%),var(--inset);color:#e0c9e6}
+html[data-theme=dusk] .book-cover-empty .ui-icon{filter:drop-shadow(0 0 10px #dcb4db44)}
+
 @media(max-width:520px){header{padding:25px 18px 10px}
 header h1{font-size:22px}
 main{padding:6px 14px 24px}
@@ -166,14 +195,24 @@ main{padding:6px 14px 24px}
 .book-date,.book-teaser{padding:0 11px}
 .book-tile>button:not(.book-open){margin:0 11px 11px;font-size:12px;padding:8px}
 #book-details{display:block}
+html[data-theme=dusk] header{padding:28px 20px 12px}
+html[data-theme=dusk] header h1{font-size:23px;letter-spacing:-.7px}
+html[data-theme=dusk] .brand{gap:12px}
+html[data-theme=dusk] .brand-symbol{width:42px;height:42px}
+html[data-theme=dusk] header p{font-size:14px;margin-top:17px}
+html[data-theme=dusk] .header-tools{margin-top:18px}
+html[data-theme=dusk] nav{border-radius:18px}
+html[data-theme=dusk] .card{border-radius:21px}
+html[data-theme=dusk] .card h2{font-size:23px}
 }
 
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}
 }
 
 @media print{header,.header-tools,nav,#next-action,footer,button,.audit{display:none!important}
-body{background:#faf7ef;color:#292d35}
-.card{border:0;box-shadow:none}
+html[data-theme] body{background:#faf7ef;color:#292d35}
+html[data-theme] body::before{display:none}
+html[data-theme] .card{background:#faf7ef;color:#292d35;border:0;box-shadow:none}
 .art{break-inside:avoid}
 main{padding:0;max-width:none}
 }

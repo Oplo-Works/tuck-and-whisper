@@ -41,7 +41,7 @@
     for (const el of document.querySelectorAll('nav button')) {
       if (el.id === current) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
     }
-    document.querySelector('meta[name="theme-color"]').content = dusk ? '#201f29' : '#f5f0e6';
+    document.querySelector('meta[name="theme-color"]').content = dusk ? '#11162d' : '#f5f0e6';
     decorate();
   }
   window.TawUI = { icon, decorate, render };

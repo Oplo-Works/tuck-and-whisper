@@ -14,7 +14,15 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
-## UI update — warm paper (shell v28)
+## UI update — moonlit whisper (shell v32)
+
+The default for a first visit is now Dusk: a static starry navy sky, a soft rose/lavender horizon, a warm moon logo, opaque violet cards, and softly glowing pastel action buttons. Active navigation has a matching glow and underline; disabled actions have no glow. The background uses CSS only, with no new assets, runtime dependencies, or animation. Existing Paper/Dusk preferences are respected, and the manual switch remains available. The installed-app colors and offline shell are updated together (`taw-shell-v32`).
+
+The capture, review, reading, and library screens share the palette. Workflow logic, source passages, model requests, and stored records are unchanged.
+
+Validation: `npm test` passed 48 core checks, 39 Node integration checks, and 64 browser checks. Browser checks cover both themes' selected AA text-color pairs, 320/390/1280px layouts, manual-theme persistence, and the existing reading/storage workflow with mocked model responses. Capture, reading, and library screenshots were also visually reviewed.
+
+## Previous UI update — warm paper (shell v28)
 
 The design update adds warm paper and manually selected dusk themes, labeled line icons, a four-step navigation bar, explicit review/inclusion states, larger reading typography, and library covers drawn only from artwork already saved with a book. The selected theme is a browser preference; time and workflow navigation never change it automatically. Fact selection, literal source passages, briefing content, model requests, and the storage schema are unchanged.
 

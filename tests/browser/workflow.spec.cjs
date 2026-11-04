@@ -331,7 +331,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: wife-copy-dusk (shell v31)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: moonlit-whisper (shell v32)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -797,19 +797,21 @@ test('v25 readback detects lost text and offers retry', async ({ page }) => {
 });
 
 
-test('v28 manual theme persists without changing an in-flight extraction or its evidence', async ({ page }) => {
+test('v32 starts at dusk; manual paper choice persists without changing in-flight evidence', async ({ page }) => {
   const pending = deferred(); const requests = await boot(page, { extract: pending });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
   await page.locator('#memo-input').fill(memo); await page.locator('#extract-btn').click();
-  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
+  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
   pending.resolve(); await expect(page.locator('#screen-review')).toBeVisible();
   expect(requests.filter(r => r.url.endsWith('/api/spark'))).toHaveLength(1);
   await expect(page.locator('#nav-review')).toHaveAttribute('aria-current', 'step');
   const before = await stored(page); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
   expect((await stored(page)).candidates).toEqual(before.candidates);
-  await page.locator('#lang-select').selectOption('en'); await expect(page.locator('#theme-toggle')).toHaveAccessibleName('Paper');
-  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
+  await page.locator('#lang-select').selectOption('en'); await expect(page.locator('#theme-toggle')).toHaveAccessibleName('Dusk');
+  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
 });
 
 test('v28 review distinguishes all four states and keeps excluded text out of reading', async ({ page }) => {
