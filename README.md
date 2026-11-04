@@ -14,7 +14,15 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
-## UI update — moonlit whisper (shell v32)
+## UI update — mobile whisper (shell v33)
+
+The phone layout keeps the night sky, moon logo, reading typography, and generous memo field while removing redundant rows. Language/theme controls now live in an accessible settings sheet beside the brand. Draft save status sits beside the screen heading; book-save feedback stays beside the save action. Review metadata shares a row, selected decisions no longer glow, and the smaller review action bar sits outside the content card. Question fields grow with their text. Photo-free reading has one explanation instead of a disabled illustration button and repeated notices. The library uses full-width rows with small saved-artwork covers, an empty-state capture action, and collapsed record management. Saved-reading dialogs put export details after the story and keep their close control accessible.
+
+Mobile sizing supports 320/360/390/430 CSS-pixel widths, safe-area insets, dynamic viewport heights, and a shortened viewport while typing. Dialogs restore focus explicitly across Chromium and WebKit. No storage schema, model request, confirmation/inclusion contract, or export content contract changed. Release: `taw-shell-v33`, footer `build: mobile-whisper (shell v33)`.
+
+Validation: 48 core + 39 Node + 68 Chrome browser checks passed. `npm run test:mobile` runs eight additional mobile-emulation cases across Chromium and WebKit; install WebKit first with `npx playwright install webkit`. The suite checks settings focus, four phone widths, touch-target sizes, growing question fields, text-only reading, single-column library rows, and reachable dialog controls. These are browser-engine/emulation checks, not physical iPhone/Android device certification; model responses are mocked. At 390px the first card starts at 233px instead of 382px, with the memo height and reading line spacing retained.
+
+## Previous UI update — moonlit whisper (shell v32)
 
 The default for a first visit is now Dusk: a static starry navy sky, a soft rose/lavender horizon, a warm moon logo, opaque violet cards, and softly glowing pastel action buttons. Active navigation has a matching glow and underline; disabled actions have no glow. The background uses CSS only, with no new assets, runtime dependencies, or animation. Existing Paper/Dusk preferences are respected, and the manual switch remains available. The installed-app colors and offline shell are updated together (`taw-shell-v32`).
 

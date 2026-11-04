@@ -1,20 +1,21 @@
 (function () {
   'use strict';
   let app, saving = false, statusKey = '', exportSnapshot = null, exportRevision = null, exportDay = null, exportSaved = false, objectURLs = [];
-  let coverURLs = [];
+  let coverURLs = [], dialogReturnFocus = null;
   const $ = id => document.getElementById(id), S = window.TawStorage, B = window.TawBooks, W = window.TawWorkflow;
   function release() { for (const url of objectURLs) URL.revokeObjectURL(url); objectURLs = []; }
   function display(book) {
     book = B.normalize(book);
     release(); const area = $('book-content'); area.replaceChildren();
-    area.append(app.node('h3', book.title), app.node('p', book.eventDate));
+    const title = app.node('h3', book.title); title.id = 'saved-book-title';
+    area.append(title, app.node('p', book.eventDate, 'hint'));
     if (book.artwork) { const url = URL.createObjectURL(book.artwork); objectURLs.push(url); area.append(app.image(url), app.node('p', app.t('aiArt'), 'hint')); }
     if (Array.isArray(book.paragraphs) && book.paragraphs.length) {
       // Restore paragraph + illustration pairs in order.
       for (const p of book.paragraphs) {
         for (const text of p.lines) area.append(app.node('p', text));
         if (p.artwork) { const url = URL.createObjectURL(p.artwork); objectURLs.push(url); area.append(app.image(url), app.node('p', app.t('aiArt'), 'hint')); }
-        else area.append(app.node('p', app.t('paraSkipped'), 'hint'));
+        // The reading copy does not need a missing-image notice after every paragraph.
       }
     } else {
       for (const text of book.lines) area.append(app.node('p', text));
@@ -42,10 +43,10 @@
       const readback = (await S.books(app.getDB())).find(b => b.id === book.id);
       if (!await B.same(readback, book)) throw Error('Book verification failed');
       const status = app.t(book.artwork || book.paragraphs.some(p => p.artwork) ? 'bookSaved' : 'bookSavedText');
-      $('book-save-status').textContent = status; app.message(status);
+      $('book-save-status').textContent = status;
     } catch (e) {
       const status = app.t('bookSaveFailed', { reason: e.cause?.name || e.message });
-      $('book-save-status').textContent = status; app.message(status);
+      $('book-save-status').textContent = status;
     }
     finally { saving = false; render(); }
   }
@@ -54,7 +55,11 @@
     app.show('library'); const area = $('books'); area.replaceChildren();
     try {
       const books = await S.books(app.getDB());
-      if (!books.length) area.append(app.node('p', app.t('libraryEmpty')));
+      if (!books.length) {
+        area.append(app.node('p', app.t('libraryEmpty')));
+        const start = app.node('button', app.t('returnCapture'), 'primary'); start.dataset.icon = 'note';
+        start.onclick = () => app.show('capture'); area.append(start);
+      }
       for (const book of books) {
         const card = app.node('div', undefined, 'card book-tile'), open = app.node('button', undefined, 'book-open');
         const normalized = B.normalize(book), cover = normalized.artwork || normalized.paragraphs.find(p => p.artwork)?.artwork;
@@ -66,13 +71,16 @@
           const empty = app.node('span', undefined, 'book-cover-empty'), label = app.node('span', app.t('textBook'));
           label.dataset.copy = 'textBook'; empty.append(window.TawUI.icon('book'), label); open.append(empty);
         }
-        open.append(app.node('span', normalized.title, 'book-name')); open.setAttribute('aria-label', normalized.title);
-        open.onclick = () => { exportSnapshot = book; exportSaved = true; display(book); $('book-note').textContent = app.t('past') + ' · ' + app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false; $('book-dialog').showModal(); };
+        const info = app.node('span', undefined, 'book-info');
+        info.append(app.node('span', normalized.title, 'book-name'));
+        const date = app.node('time', normalized.eventDate, 'book-date'); date.dateTime = normalized.eventDate; info.append(date);
+        if (normalized.lines[0] && normalized.lines[0] !== normalized.title) info.append(app.node('span', normalized.lines[0], 'book-teaser'));
+        open.append(info); open.setAttribute('aria-label', normalized.title);
+        open.onclick = () => { dialogReturnFocus = open; exportSnapshot = book; exportSaved = true; display(book); $('book-snapshot').hidden = false; $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false; $('book-dialog').showModal(); };
         const remove = app.node('button', app.t('deleteBook'));
         remove.dataset.copy = 'deleteBook'; remove.dataset.icon = 'trash';
         remove.onclick = async () => { if (!confirm(app.t('deleteBook') + '?')) return; try { await S.deleteBook(app.getDB(), book.id); await library(); } catch (e) { app.fail(e); } };
-        const date = app.node('time', normalized.eventDate, 'book-date'); date.dateTime = normalized.eventDate;
-        card.append(open, date, app.node('p', normalized.lines[0] || '', 'book-teaser'), remove); area.append(card);
+        card.append(open, remove); area.append(card);
       }
       window.TawUI.decorate(area);
     } catch (e) { app.fail(e); }
@@ -80,8 +88,8 @@
   async function previewExport() {
     try {
       app.message(''); const book = await currentBook(); exportSnapshot = book; exportSaved = false; exportDay = book.dayId; exportRevision = book.revision;
-      display(book); $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false;
-      $('book-dialog').showModal();
+      display(book); $('book-snapshot').hidden = true; $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false;
+      dialogReturnFocus = $('export-book'); $('book-dialog').showModal();
     } catch (e) { app.fail(e); }
   }
   async function exportBook() {
@@ -104,7 +112,7 @@
   }
   function render() {
     if (!app) return;
-    $('library-btn').hidden = false; $('nav-library').disabled = false; $('book-tools').hidden = false;
+    $('nav-library').disabled = false; $('book-tools').hidden = false;
     const valid = W.validOutput(app.getRecord(), app.getRecord().story);
     const meta = B.metadata(app.getRecord());
     const key = JSON.stringify([app.getRecord().dayId, app.getRecord().contentRevision, meta, app.getRecord().question?.text, app.getArt(), app.getParagraphArts()]);
@@ -121,9 +129,9 @@
     app = context;
     $('book-title').oninput = () => app.setBookDetails({ title: $('book-title').value });
     $('event-date').oninput = () => app.setBookDetails({ eventDate: $('event-date').value });
-    $('save-book').onclick = save; $('library-btn').onclick = $('nav-library').onclick = library; $('export-book').onclick = previewExport; $('download-book').onclick = exportBook;
+    $('save-book').onclick = save; $('nav-library').onclick = library; $('export-book').onclick = previewExport; $('download-book').onclick = exportBook;
     window.addEventListener('beforeunload', () => { for (const url of coverURLs) URL.revokeObjectURL(url); release(); });
-    $('book-dialog').addEventListener('close', () => { release(); exportSnapshot = null; });
+    $('book-dialog').addEventListener('close', () => { release(); exportSnapshot = null; if (dialogReturnFocus?.isConnected) dialogReturnFocus.focus({ preventScroll: true }); dialogReturnFocus = null; });
     $('delete-all').onclick = async () => { if (!confirm(app.t('deleteConfirm'))) return; try { await app.reset(); } catch (e) { app.fail(e); } };
     render();
   }

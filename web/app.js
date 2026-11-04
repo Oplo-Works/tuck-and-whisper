@@ -44,7 +44,7 @@
     $('save-status').textContent = '';
     queue = queue.then(async () => {
       if (blocked) return false;
-      try { storageVersion = await S.save(db, snapshot, storageVersion); $('save-status').textContent = t('saved'); return true; }
+      try { storageVersion = await S.save(db, snapshot, storageVersion); $('save-status').textContent = t('savedShort'); return true; }
       catch (error) { const conflict = error.name === 'ConflictError', code = report('save', error); storageWarning(conflict, code); return false; }
     });
     return queue;
@@ -113,7 +113,7 @@
   function translate() {
     document.documentElement.lang = I.getLanguage(); document.documentElement.dir = I.languageInfo(I.getLanguage())?.rtl ? 'rtl' : 'ltr';
     for (const el of document.querySelectorAll('[data-copy]')) el.textContent = t(el.dataset.copy);
-    if ($('save-status').textContent) $('save-status').textContent = t('saved');
+    if ($('save-status').textContent) $('save-status').textContent = t('savedShort');
     $('language-note').hidden = ['ko', 'en'].includes(I.getLanguage());
     for (const kind of ['people', 'animals']) {
       const select = $('identity-' + kind); select.replaceChildren();
@@ -130,8 +130,9 @@
     box.dataset.decision = c.decision; box.dataset.included = String(c.included);
     box.classList.toggle('is-confirmed', c.decision === 'confirmed'); box.classList.toggle('is-rejected', c.decision === 'rejected');
     box.classList.toggle('is-excluded', c.decision === 'confirmed' && !c.included);
-    const badge = node('span', t(state), 'state-badge'); badge.prepend(window.TawUI.icon(c.decision === 'confirmed' ? 'check' : c.decision === 'rejected' ? 'cross' : 'clock')); box.append(badge);
-    box.append(node('p', c.text, 'candidate-text'), node('p', t(c.source === 'memo' ? 'sourceMemo' : 'sourcePhoto'), 'source'));
+    const badge = node('span', t(state), 'state-badge'); badge.prepend(window.TawUI.icon(c.decision === 'confirmed' ? 'check' : c.decision === 'rejected' ? 'cross' : 'clock'));
+    const meta = node('div', undefined, 'candidate-meta'); meta.append(badge, node('span', t(c.source === 'memo' ? 'sourceMemo' : 'sourcePhoto'), 'source')); box.append(meta);
+    box.append(node('p', c.text, 'candidate-text'));
     if (!c.grounded) box.append(node('p', t('ungrounded'), 'notice'));
     const yes = node('button', t('confirm'), c.decision === 'confirmed' ? 'primary' : ''); yes.disabled = !c.grounded;
     yes.dataset.icon = 'check'; yes.dataset.decision = 'confirmed'; yes.setAttribute('aria-pressed', String(c.decision === 'confirmed'));
@@ -191,8 +192,8 @@
       } else if (p.index >= W.PARAGRAPH_ART_LIMIT) {
         slot.append(node('p', t('paraTextOnly'), 'hint'));
       } else if (!hasArtAnchor()) {
-        // No photo in this session: text only, no button, no image call.
-        slot.append(node('p', t('paraNoPhoto'), 'hint'));
+        // One shared no-photo explanation above the story; no repeated empty slots.
+        slot.hidden = true;
       } else if (paragraphFailed[p.index]) {
         slot.append(node('p', t('paraArtFailed'), 'notice'));
         const retry = node('button', t('paraArtRetry')); retry.disabled = !allowed || !!paragraphBusy[p.index];
@@ -225,6 +226,7 @@
     $('selection-count').textContent = t('selected', { n: W.used(record).length });
     if (screen === 'review') {
       $('memo-candidates').replaceChildren(); $('photo-candidates').replaceChildren();
+      $('photo-details').hidden = !photoFile && !record.candidates.some(c => c.source === 'photo');
       for (const c of record.candidates) $(c.source === 'memo' ? 'memo-candidates' : 'photo-candidates').append(candidate(c));
       $('photo-preview').replaceChildren(); if (photoURL) $('photo-preview').append(image(photoURL));
       $('identity-details').hidden = !photoFile;
@@ -236,8 +238,9 @@
     output($('briefing'), record.briefing); renderStory();
     const storyValid = W.validOutput(record, record.story);
     $('para-art-tools').hidden = !storyValid;
+    $('para-art-all').hidden = !hasArtAnchor();
     $('para-art-all').disabled = !paragraphArtAllowed() || paragraphBusy.some(Boolean);
-    $('para-art-hint').textContent = !storyValid ? '' : !hasArtAnchor() ? t('paraNoPhoto') : !W.imageAllowed(record) ? t('paraGate') : '';
+    $('para-art-hint').textContent = !storyValid ? '' : !hasArtAnchor() ? t('readingTextOnly') : !W.imageAllowed(record) ? t('paraGate') : '';
     $('briefing-status').textContent = running.briefing ? t('busy') : (statuses.briefing || '');
     $('story-status').textContent = running.story ? t('busy') : (statuses.story || '');
     $('briefing-retry').disabled = !ready || !!running.briefing; $('story-retry').disabled = !ready || !!running.story;

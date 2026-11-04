@@ -31,6 +31,16 @@ async function boot(page, hooks = {}) {
   await page.goto('/'); await page.waitForFunction(() => window.TAW_READY);
   return requests;
 }
+async function setLanguage(page, language) {
+  await page.locator('#settings-open').click();
+  await page.locator('#lang-select').selectOption(language);
+  await page.locator('#settings-close').click();
+}
+async function toggleTheme(page) {
+  await page.locator('#settings-open').click();
+  await page.locator('#theme-toggle').click();
+  await page.locator('#settings-close').click();
+}
 async function review(page, withPhoto = false) {
   await page.locator('#memo-input').fill(memo);
   if (withPhoto) await page.locator('#photo-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
@@ -75,11 +85,11 @@ test('v26 (a,c,g) capture DOM, visual and keyboard order; reset is outside the i
   for (const id of ['story', 'reading-question', 'testimony-input', 'save-testimony', 'book-title', 'event-date', 'save-book']) {
     await expect(page.locator('#screen-bedtime #' + id)).toHaveCount(1);
   }
-  await expect(page.locator('#theme-toggle')).toBeVisible();
+  await expect(page.locator('#settings-open')).toBeVisible();
 });
 
 for (const lang of ['ko', 'en']) test('v26 (b,c,e,f) clear labels and static guidance: ' + lang, async ({ page }) => {
-  await boot(page); await page.locator('#lang-select').selectOption(lang);
+  await boot(page); await setLanguage(page, lang);
   const ko = lang === 'ko';
   await expect(page.locator('#photo-section [data-copy=photoSkip]')).toContainText(ko ? '단락 그림 없이 글만' : 'paragraphs stay text-only');
   await expect(page.locator('[data-copy=captureHint]')).toContainText(ko ? '하루의 작은 순간' : 'A little moment from the day');
@@ -110,7 +120,7 @@ test('v26 (d) identity instructions name the collapsed control; gate still requi
   await expect(page.locator('#story')).toContainText(passages[0]);
   await expect(page.locator('#para-art-hint')).toContainText('이 내용이 맞나요? 화면에서 ‘사진을 이야기의 그림으로 쓰려면’을 열어');
   await expect(page.locator('#para-art-all')).toBeDisabled();
-  await page.locator('#lang-select').selectOption('en');
+  await setLanguage(page, 'en');
   await expect(page.locator('#identity-hint')).toContainText('open “Before using this photo as the story illustration” below');
   await expect(page.locator('#para-art-hint')).toContainText('open “Before using this photo as the story illustration” on the “Does this look right?” review screen');
   await page.locator('#nav-review').click(); await page.locator('#identity-details summary').click();
@@ -136,7 +146,7 @@ for (const outcome of ['success', 'failure']) test('v26 voice pending warning an
   await page.locator('#transcribe-btn').click(); await started.promise;
   await expect(page.locator('#voice-progress')).toBeVisible(); await expect(page.locator('#voice-progress')).toContainText('음성을 글로 바꾸는 중');
   await expect(page.locator('#extract-btn')).toBeDisabled(); await expect(page.locator('#transcribe-btn')).toBeDisabled();
-  await page.locator('#lang-select').selectOption('en');
+  await setLanguage(page, 'en');
   await expect(page.locator('#voice-progress')).toContainText('Converting audio to text');
   expect(requests).toHaveLength(0);
   pending.resolve();
@@ -149,7 +159,7 @@ for (const outcome of ['success', 'failure']) test('v26 voice pending warning an
 test('v26 (b,e,h) no-photo text book survives reset and reload; cancel preserves current draft', async ({ page }) => {
   const requests = await boot(page); await reading(page);
   await expect(page.locator('#story img')).toHaveCount(0);
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('글 완성본을 보관');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('글 완성본을 보관');
   await page.locator('#nav-capture').click();
   page.once('dialog', d => d.dismiss()); await page.locator('#new-day-btn').click();
   await expect(page.locator('#memo-input')).toHaveValue(memo); expect((await stored(page)).story.lines).toHaveLength(3);
@@ -158,7 +168,7 @@ test('v26 (b,e,h) no-photo text book survives reset and reload; cancel preserves
   await expect.poll(async () => (await stored(page)).memoText).toBe('');
   const empty = await stored(page); expect(empty.candidates).toHaveLength(0); expect(empty.story).toBeNull();
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await page.locator('#library-btn').click(); await page.locator('#books .card button').first().click();
+  await page.locator('#nav-library').click(); await page.locator('#books .card button').first().click();
   await expect(page.locator('#book-content')).toContainText(passages[0]);
   await expect(page.locator('#book-content img')).toHaveCount(0);
   expect(requests.filter(r => r.url.endsWith('/api/image'))).toHaveLength(0);
@@ -189,7 +199,7 @@ test('v26 all 23 fallback locales show the new English copy', async ({ page }) =
   const languages = await page.locator('#lang-select option').evaluateAll(options => options.map(o => o.value).filter(v => !['ko', 'en'].includes(v)));
   expect(languages).toHaveLength(23);
   for (const lang of languages) {
-    await page.locator('#lang-select').selectOption(lang);
+    await setLanguage(page, lang);
     await expect(page.locator('#new-day-btn')).toHaveText('Clear current draft');
     await expect(page.locator('[data-copy=voiceReplace]')).toContainText('Converting audio will replace your current note');
     await expect(page.locator('[data-copy=photoSkip]')).toContainText('paragraphs stay text-only');
@@ -282,11 +292,11 @@ async function reading(page, art = false) {
   if (art) { await page.getByText('부모 도구', { exact: true }).click(); await page.locator('#style-btn').click(); await expect(page.locator('#art-preview img')).toBeVisible(); await page.locator('#accept-art').click(); }
 }
 test('T22 saved artwork survives reload, while original photo stays session-only', async ({ page }) => {
-  await boot(page); await reading(page, true); await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  await boot(page); await reading(page, true); await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('#photo-status')).toHaveText(''); await page.locator('#library-btn').click();
+  await expect(page.locator('#photo-status')).toHaveText(''); await page.locator('#nav-library').click();
   await page.locator('#books .card button').first().click(); await expect(page.locator('#book-dialog')).toBeVisible();
-  await expect(page.locator('#book-content img')).toBeVisible(); await expect(page.locator('#book-content')).toContainText(passages[0]); await expect(page.locator('#book-note')).toContainText('보관 당시');
+  await expect(page.locator('#book-content img')).toBeVisible(); await expect(page.locator('#book-content')).toContainText(passages[0]); await expect(page.locator('#book-snapshot')).toContainText('보관 당시');
 });
 test('T23 unsaved artwork is not restored but prepared text is', async ({ page }) => {
   await boot(page); await reading(page, true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
@@ -296,15 +306,15 @@ test('T23 unsaved artwork is not restored but prepared text is', async ({ page }
 test('T24 storage failure cannot display saved-book success', async ({ page }) => {
   await boot(page); await reading(page);
   await page.evaluate(() => { window.TawStorage.saveBook = async () => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); }; });
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('완성본 보관을 확인하지 못했어요'); await expect(page.locator('#book-save-status')).toContainText('Quota exceeded'); await expect(page.locator('#message')).not.toContainText('보관했어요');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('완성본 보관을 확인하지 못했어요'); await expect(page.locator('#book-save-status')).toContainText('Quota exceeded'); await expect(page.locator('#message')).not.toContainText('보관했어요');
 });
 test('T25 individual deletion preserves current record; delete-all clears legacy and books', async ({ page }) => {
-  await boot(page); await reading(page); await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
-  await page.locator('#nav-capture').click(); await page.locator('#library-btn').click(); page.on('dialog', d => d.accept());
+  await boot(page); await reading(page); await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  await page.locator('#nav-capture').click(); await page.locator('#nav-library').click(); page.on('dialog', d => d.accept());
   await page.getByRole('button', { name: '이 보관본 삭제', exact: true }).click(); await expect(page.locator('#books')).toContainText('아직 보관한 이야기가 없어요');
   expect((await stored(page)).memoText).toBe(memo);
   await page.evaluate(() => localStorage.setItem('taw-day-v1', 'legacy-private'));
-  await page.locator('#delete-all').click(); await expect(page.locator('#memo-input')).toHaveValue('');
+  await page.locator('#library-management summary').click(); await page.locator('#delete-all').click(); await expect(page.locator('#memo-input')).toHaveValue('');
   expect(await page.evaluate(() => localStorage.getItem('taw-day-v1'))).toBeNull(); expect((await stored(page)).candidates).toHaveLength(0);
 });
 test('T26/T27 export is self-contained, private fields excluded, and opens in a fresh browser context', async ({ page, browser }, testInfo) => {
@@ -331,7 +341,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: moonlit-whisper (shell v32)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: mobile-whisper (shell v33)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -349,7 +359,7 @@ for (const reset of ['new day', 'load latest', 'delete all']) {
       await page.locator('#reload-record').click();
       await expect(page.locator('#memo-input')).toHaveValue('Latest dummy memo');
     } else if (reset === 'delete all') {
-      await page.locator('#library-btn').click(); await page.locator('#delete-all').click();
+      await page.locator('#nav-library').click(); await page.locator('#library-management summary').click(); await page.locator('#delete-all').click();
     } else {
       await page.locator('#new-day-btn').click();
     }
@@ -384,7 +394,7 @@ for (const reset of ['new day', 'load latest', 'delete all']) {
       await page.locator('#reload-record').click();
       await expect(page.locator('#memo-input')).toHaveValue('Latest dummy memo');
     } else if (reset === 'delete all') {
-      await page.locator('#library-btn').click(); await page.locator('#delete-all').click();
+      await page.locator('#nav-library').click(); await page.locator('#library-management summary').click(); await page.locator('#delete-all').click();
       await expect(page.locator('#screen-capture')).toBeVisible();
     } else {
       await page.locator('#new-day-btn').click();
@@ -421,7 +431,7 @@ test('voice conversion failure recovers, and a late transcript cannot overwrite 
   await expect(page.locator('#memo-input')).toHaveValue('부모가 새로 입력한 메모'); await expect(page.locator('#transcribe-btn')).toBeEnabled();
 });
 test('unsupported translations use readable English and preserve the chosen locale', async ({ page }) => {
-  await boot(page); await page.locator('#lang-select').selectOption('ja');
+  await boot(page); await setLanguage(page, 'ja');
   await expect(page.locator('#extract-btn')).toHaveText('Prepare reading'); await expect(page.locator('#language-note')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
 });
@@ -549,7 +559,7 @@ for (const field of ['testimony', 'history']) {
     await expect(page.locator('#storage-warning')).toBeVisible();
     await expect(page.locator('#storage-text')).toContainText('손상되어 읽을 수 없어요');
     await expect(page.locator('#start-fresh')).toBeVisible(); await expect(page.locator('#retry-save')).toBeHidden();
-    await expect(page.locator('#library-btn')).toBeVisible();
+    await expect(page.locator('#nav-library')).toBeVisible();
     const quarantined = await page.evaluate(() => JSON.parse(localStorage.getItem('taw-quarantine-v2')));
     expect(quarantined.record[field]).toEqual([null]); expect(quarantined.record.memoText).toBe('손상 주입용 더미 메모');
     // The damaged record is still in place until the user explicitly recovers.
@@ -615,7 +625,7 @@ test('v22 stage1: saved and exported books keep every paragraph+illustration pai
   await boot(page); await reading(page, true);
   await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
   await page.locator('#testimony-input').fill('PRIVATE_CHILD_RESPONSE'); await page.locator('#save-testimony').click();
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const downloadPromise = page.waitForEvent('download'); await page.locator('#export-book').click(); await page.locator('#download-book').click();
   const download = await downloadPromise; const file = testInfo.outputPath(download.suggestedFilename()); await download.saveAs(file);
   const fs = require('node:fs'); const html = fs.readFileSync(file, 'utf8');
@@ -623,7 +633,7 @@ test('v22 stage1: saved and exported books keep every paragraph+illustration pai
   const at = passages.map(p => html.indexOf(p)); expect(at[0]).toBeGreaterThan(-1); expect(at[0]).toBeLessThan(at[1]); expect(at[1]).toBeLessThan(at[2]);
   expect(html).not.toMatch(/PRIVATE_CHILD_RESPONSE|PRIVATE|https?:\/\//);
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await page.locator('#library-btn').click(); await page.locator('#books .card button').first().click();
+  await page.locator('#nav-library').click(); await page.locator('#books .card button').first().click();
   await expect(page.locator('#book-dialog')).toBeVisible(); await expect(page.locator('#book-content img')).toHaveCount(4);
   const bookText = await page.locator('#book-content').textContent();
   const inBook = passages.map(p => bookText.indexOf(p)); expect(inBook[0]).toBeGreaterThan(-1); expect(inBook[0]).toBeLessThan(inBook[1]); expect(inBook[1]).toBeLessThan(inBook[2]);
@@ -654,15 +664,16 @@ test('v23 (a) without a photo, paragraph slots are text-only with guidance, no i
   await expect(page.locator('#story')).toContainText(passages[0]);
   await expect(page.locator('#story .para-art')).toHaveCount(3);
   for (let i = 0; i < 3; i++) {
-    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i)).toBeHidden();
     await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
     await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(0);
   }
   await expect(page.locator('#para-art-all')).toBeDisabled();
-  await expect(page.locator('#para-art-hint')).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+  await expect(page.locator('#para-art-hint')).toContainText('지금은 글로 함께 읽어요');
+  await expect(page.locator('#para-art-all')).toBeHidden();
   expect(imageRequests(requests)).toHaveLength(0); expect(paraPrompts(requests)).toHaveLength(0);
   // Text-only bookkeeping and export are unaffected by the missing photo.
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const downloadPromise = page.waitForEvent('download'); await page.locator('#export-book').click(); await page.locator('#download-book').click();
   const download = await downloadPromise; const file = testInfo.outputPath(download.suggestedFilename()); await download.saveAs(file);
   const html = require('node:fs').readFileSync(file, 'utf8');
@@ -672,7 +683,7 @@ test('v23 (a) without a photo, paragraph slots are text-only with guidance, no i
 test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no new image call, and a saved book keeps its pairs', async ({ page }) => {
   const requests = await boot(page); await reading(page, true);
   await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
-  await page.locator('#save-book').click(); await expect(page.locator('#message')).toContainText('보관했어요');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const callsBefore = imageRequests(requests).length; expect(callsBefore).toBeGreaterThan(0);
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('#photo-status')).toHaveText(''); // original photo is session-only
@@ -680,13 +691,13 @@ test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no ne
   await expect(page.locator('#story')).toContainText(passages[0]); // prepared text story still reads
   await expect(page.locator('#para-art-all')).toBeDisabled();
   for (let i = 0; i < 3; i++) {
-    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i)).toBeHidden();
     await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
     await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(0);
   }
   expect(imageRequests(requests)).toHaveLength(callsBefore); // nothing new went out after the anchor vanished
   // The book saved before the reload keeps every paragraph+illustration pair.
-  await page.locator('#nav-capture').click(); await page.locator('#library-btn').click();
+  await page.locator('#nav-capture').click(); await page.locator('#nav-library').click();
   await page.locator('#books .card button').first().click(); await expect(page.locator('#book-dialog')).toBeVisible();
   await expect(page.locator('#book-content img')).toHaveCount(4); // 1 approved single + 3 paragraph illustrations
   const bookText = await page.locator('#book-content').textContent();
@@ -699,7 +710,7 @@ test('v24 memo input without a photo keeps text-only paragraphs and makes no ima
   await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
   await expect(page.locator('#story .para-art')).toHaveCount(3);
   for (let i = 0; i < 3; i++) {
-    await expect(page.locator('#story .para-art').nth(i)).toContainText('사진을 추가하면 이 단락의 그림이 생겨요');
+    await expect(page.locator('#story .para-art').nth(i)).toBeHidden();
     await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
   }
   await expect(page.locator('#para-art-all')).toBeDisabled();
@@ -710,7 +721,7 @@ test('v21 a normal record reloads without any recovery banner', async ({ page })
   await expect(page.locator('#save-status')).toContainText('저장됨');
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('#storage-warning')).toBeHidden(); await expect(page.locator('#start-fresh')).toBeHidden();
-  await expect(page.locator('#memo-input')).toHaveValue('정상 더미 메모'); await expect(page.locator('#library-btn')).toBeVisible();
+  await expect(page.locator('#memo-input')).toHaveValue('정상 더미 메모'); await expect(page.locator('#nav-library')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('taw-quarantine-v2'))).toBeNull();
 });
 
@@ -751,7 +762,7 @@ for (const kind of ['illustrated', 'text-only', 'mixed']) test('v25 durable day 
     expect((await savedBooks(page))[0]).toEqual(expected);
     // Current input changes cannot change the saved book or prevent its export.
     await page.locator('#memo-input').fill('UNCONFIRMED_NEW_MEMO');
-    await page.locator('#library-btn').click();
+    await page.locator('#nav-library').click();
     await expect(page.locator('#books .book-date')).toHaveText(expected.eventDate);
     await page.locator('#books .card button').first().click();
     await expect(page.locator('#book-content h3')).toHaveText(expected.title); await expect(page.locator('#book-content img')).toHaveCount(count);
@@ -771,7 +782,7 @@ test('v25 next actions, empty library, confirmed-only title and optional metadat
   await boot(page);
   await expect(page.locator('nav button')).toHaveText(['기록', '확인', '함께 읽기', '보관함']);
   await expect(page.locator('#next-action')).toContainText('사진과 메모');
-  await page.locator('#library-btn').click(); await expect(page.locator('#books')).toContainText('완성본을 보관');
+  await page.locator('#nav-library').click(); await expect(page.locator('#books')).toContainText('완성본을 보관');
   await page.locator('#nav-capture').click(); await page.locator('#memo-input').fill(memo);
   await expect(page.locator('#next-action')).toContainText('이야기를 준비');
   await page.locator('#extract-btn').click(); await expect(page.locator('#screen-review')).toBeVisible();
@@ -801,15 +812,15 @@ test('v32 starts at dusk; manual paper choice persists without changing in-fligh
   const pending = deferred(); const requests = await boot(page, { extract: pending });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
   await page.locator('#memo-input').fill(memo); await page.locator('#extract-btn').click();
-  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
+  await toggleTheme(page); await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
   pending.resolve(); await expect(page.locator('#screen-review')).toBeVisible();
   expect(requests.filter(r => r.url.endsWith('/api/spark'))).toHaveLength(1);
   await expect(page.locator('#nav-review')).toHaveAttribute('aria-current', 'step');
   const before = await stored(page); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
   expect((await stored(page)).candidates).toEqual(before.candidates);
-  await page.locator('#lang-select').selectOption('en'); await expect(page.locator('#theme-toggle')).toHaveAccessibleName('Dusk');
-  await page.locator('#theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
+  await setLanguage(page, 'en'); await expect(page.locator('#theme-toggle')).toHaveAttribute('aria-label', 'Dusk');
+  await toggleTheme(page); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
   await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
 });
@@ -849,7 +860,7 @@ test('v28 library cover reuses saved paragraph art after reload; raw photo is no
 test('v28 paper and dusk text palettes meet AA and mobile screens do not overflow', async ({ page }) => {
   await boot(page); await page.setViewportSize({ width: 320, height: 900 });
   for (const theme of ['paper', 'dusk']) {
-    if ((await page.locator('html').getAttribute('data-theme')) !== theme) await page.locator('#theme-toggle').click();
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme) await toggleTheme(page);
     const contrasts = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
       function luminance(hex) { const rgb = hex.trim().slice(1).match(/../g).map(v => parseInt(v, 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722; }
@@ -862,14 +873,14 @@ test('v28 paper and dusk text palettes meet AA and mobile screens do not overflo
   }
 });
 
-test('v28 responsive reading path preserves full text, controls and theme at 320/390/1280px', async ({ page }) => {
+test('v28 responsive reading path preserves full text, controls and theme at 320/360/390/430px', async ({ page }) => {
   await boot(page); await review(page);
   await page.locator('#prepare-btn').click(); await expect(page.locator('#briefing')).toContainText(passages[2]);
   await page.locator('#open-bedtime').click(); await expect(page.locator('#story')).toContainText(passages[2]);
-  for (const width of [320, 390, 1280]) {
+  for (const width of [320, 360, 390, 430]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ['paper', 'dusk']) {
-      if ((await page.locator('html').getAttribute('data-theme')) !== theme) await page.locator('#theme-toggle').click();
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme) await toggleTheme(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       for (const text of passages) await expect(page.locator('#story')).toContainText(text);
       await expect(page.locator('#testimony-help')).toContainText('사실로 바꾸지 않아요');
@@ -883,4 +894,64 @@ test('v28 responsive reading path preserves full text, controls and theme at 320
   expect(colors.open).toBe(colors.body); // Only the separate deletion action uses the danger color.
   await page.screenshot({ path: 'test-results/v28-library-dusk.png', fullPage: true });
   await page.locator('#books .book-open').click(); await expect(page.locator('#book-content')).toContainText(passages[2]);
+});
+
+for (const width of [320, 360, 390, 430]) test('v33 mobile spacing, settings and reading flow: ' + width, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 844 });
+  await boot(page);
+  const shots = [];
+  async function capture(name) {
+    await page.evaluate(() => scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/v33-${testInfo.project.name || 'chrome'}-${width}-${name}.png`, fullPage: !name.includes('dialog'), scale: 'css' });
+    shots.push({ screen: name, height: await page.evaluate(() => document.documentElement.scrollHeight) });
+  }
+  const firstCard = await page.locator('#screen-capture>.card').boundingBox();
+  expect(firstCard.y).toBeLessThan(280);
+  await expect(page.locator('#library-btn')).toHaveCount(0);
+  await capture('capture');
+  await page.locator('#settings-open').click();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
+  await expect(page.locator('#settings-close')).toBeFocused();
+  await expect(page.locator('#theme-toggle')).toHaveAccessibleName('종이');
+  await capture('settings-dialog');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#settings-open')).toBeFocused();
+  await page.locator('#nav-library').click(); await capture('empty-library');
+  await page.getByRole('button', { name: '기록하러 가기' }).click();
+  await review(page);
+  const decisions = await page.locator('.candidate-actions button').evaluateAll(buttons => buttons.map(b => ({ width: b.getBoundingClientRect().width, height: b.getBoundingClientRect().height, overflowing: b.scrollWidth > b.clientWidth })));
+  for (const b of decisions) { expect(b.height).toBeGreaterThanOrEqual(44); expect(b.height).toBeLessThan(60); expect(b.overflowing).toBe(false); }
+  await capture('review');
+  // Simulate the shorter visible area when a software keyboard is raised.
+  await page.setViewportSize({ width, height: 400 });
+  expect(await page.locator('.sticky-actions').evaluate(el => getComputedStyle(el).position)).toBe('static');
+  await page.setViewportSize({ width, height: 844 });
+  await page.locator('#prepare-btn').click(); await expect(page.locator('#briefing')).toContainText(passages[2]);
+  await capture('preview');
+  const short = await page.locator('#question-text').boundingBox();
+  const longQuestion = Array(10).fill('어떤 장면이 기억나?').join('\n');
+  await page.locator('#question-text').fill(longQuestion);
+  const tall = await page.locator('#question-text').boundingBox(); expect(tall.height).toBeGreaterThan(short.height);
+  await page.locator('#question-text').fill('어떤 장면이 기억나?');
+  expect((await page.locator('#question-text').boundingBox()).height).toBeLessThan(tall.height);
+  await page.locator('#open-bedtime').click(); await expect(page.locator('#story')).toContainText(passages[2]);
+  await expect(page.locator('#para-art-all')).toBeHidden();
+  await expect(page.locator('#story .para-art:visible')).toHaveCount(0);
+  await expect(page.locator('#para-art-hint')).toContainText('지금은 글로 함께 읽어요');
+  await capture('reading');
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  await expect(page.locator('#message')).toBeHidden();
+  await page.locator('#nav-library').click(); await capture('library');
+  const list = await page.locator('#books').boundingBox(), tile = await page.locator('.book-tile').boundingBox();
+  expect(Math.abs(list.width - tile.width)).toBeLessThan(2);
+  await page.locator('.book-open').click(); await expect(page.locator('#book-content')).toContainText(passages[2]);
+  await expect(page.locator('#book-content')).not.toContainText('이 단락은 그림 없이');
+  await capture('saved-dialog');
+  const dialog = page.locator('#book-dialog');
+  await dialog.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(page.locator('#download-book')).toBeInViewport();
+  await expect(page.locator('#book-dialog form button')).toBeInViewport();
+  await page.locator('#book-dialog form button').click(); await expect(page.locator('.book-open')).toBeFocused();
+  require('node:fs').writeFileSync(`test-results/v33-${width}-metrics.json`, JSON.stringify({ width, firstCardTop: firstCard.y, shots }, null, 2));
 });

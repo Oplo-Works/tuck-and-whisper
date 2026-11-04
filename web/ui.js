@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   const paths = {
+    settings: ['M4 6h16M4 12h16M4 18h16', 'M8 3v6M16 9v6M10 15v6'],
     moon: ['M20.9 13.3A9 9 0 0 1 10.7 3.1 9 9 0 1 0 20.9 13.3Z'],
     sun: ['M12 3V1M12 23v-2M3 12H1M23 12h-2M4.2 4.2 2.8 2.8M21.2 21.2l-1.4-1.4M4.2 19.8l-1.4 1.4M21.2 2.8l-1.4 1.4', 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0'],
     photo: ['M4 5h16v14H4Z', 'm4 15 5-5 5 6 3-3 3 3', 'M17 8h.01'],
@@ -42,7 +43,41 @@
       if (el.id === current) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
     }
     document.querySelector('meta[name="theme-color"]').content = dusk ? '#11162d' : '#f5f0e6';
+    document.getElementById('settings-open').setAttribute('aria-label', t('settings'));
+    const card = document.querySelector('#screen-' + screen + '>.card');
+    if (card) {
+      const heading = card.querySelector('.section-heading');
+      heading.append(document.getElementById('save-status'));
+      document.getElementById('save-status').title = t('saved');
+      // Keep feedback with the current task, below its heading, not above navigation.
+      heading.after(document.getElementById('message'));
+    }
     decorate();
+    fitQuestion();
   }
+  function fitQuestion() {
+    const field = document.getElementById('question-text');
+    if (!field.getClientRects().length) return;
+    field.style.height = 'auto';
+    const availableHeight = window.visualViewport?.height || innerHeight;
+    field.style.height = Math.min(Math.max(field.scrollHeight + 2, 88), Math.max(120, availableHeight * .4)) + 'px';
+  }
+  function viewportChanged() {
+    const viewport = window.visualViewport;
+    const editing = document.activeElement?.matches('input,textarea');
+    document.documentElement.classList.toggle('keyboard-open', !!(editing && viewport && viewport.scale === 1 && viewport.height < innerHeight * .75));
+    fitQuestion();
+  }
+  for (const heading of document.querySelectorAll('main>section>.card>h2')) {
+    const row = document.createElement('div'); row.className = 'section-heading';
+    heading.before(row); row.append(heading);
+  }
+  document.getElementById('settings-open').onclick = () => document.getElementById('settings-dialog').showModal();
+  document.getElementById('settings-dialog').addEventListener('close', () => document.getElementById('settings-open').focus({ preventScroll: true }));
+  document.getElementById('question-text').addEventListener('input', fitQuestion);
+  window.addEventListener('resize', viewportChanged);
+  window.visualViewport?.addEventListener('resize', viewportChanged);
+  document.addEventListener('focusin', viewportChanged);
+  document.addEventListener('focusout', () => requestAnimationFrame(viewportChanged));
   window.TawUI = { icon, decorate, render };
 })();
