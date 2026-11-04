@@ -32,9 +32,7 @@ async function boot(page, hooks = {}) {
   return requests;
 }
 async function setLanguage(page, language) {
-  await page.locator('#settings-open').click();
   await page.locator('#lang-select').selectOption(language);
-  await page.locator('#settings-close').click();
 }
 async function toggleTheme(page) {
   await page.locator('#settings-open').click();
@@ -341,7 +339,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: settings-cache-fix (shell v34)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: visible-language (shell v35)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -909,6 +907,12 @@ for (const width of [320, 360, 390, 430]) test('v33 mobile spacing, settings and
   const firstCard = await page.locator('#screen-capture>.card').boundingBox();
   expect(firstCard.y).toBeLessThan(280);
   await expect(page.locator('#library-btn')).toHaveCount(0);
+  await expect(page.locator('header #lang-select')).toBeVisible();
+  expect((await page.locator('#lang-select').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await setLanguage(page, 'en');
+  await expect(page.locator('#nav-capture')).toHaveText('Capture');
+  await setLanguage(page, 'ko');
+  await expect(page.locator('#nav-capture')).toHaveText('기록');
   await capture('capture');
   await page.locator('#settings-open').click();
   await expect(page.locator('#settings-dialog')).toBeVisible();

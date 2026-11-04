@@ -29,11 +29,11 @@
 // - HTML 문서(페이지 이동 요청)는 network-first: 네트워크에서 먼저 받고, 성공하면 캐시를
 //   갱신하고, 실패할 때만 캐시를 내준다 — index.html 을 고치면 폰에 새 배포가 바로 닿는다.
 // - 그 외 정적 파일은 기존 방식(cache-first)을 유지한다. API(/api/) 트래픽은 절대 캐시하지 않는다.
-const CACHE = 'taw-shell-v34';
+const CACHE = 'taw-shell-v35';
 // Release-qualified script/style URLs keep new HTML from using an older
 // controller's cached JavaScript during the first navigation after deployment.
 // index.html 이 이제 외부 core.js/i18n.js/app.js 에 의존하므로 오프라인 셸에 함께 넣는다.
-const SHELL = ['./', './index.html', './core.js?v=34', './workflow.js?v=34', './storage.js?v=34', './books.js?v=34', './books-ui.js?v=34', './i18n.js?v=34', './copy.js?v=34', './api.js?v=34', './app.js?v=34', './ui.js?v=34', './design.css?v=34', './manifest.json', './icon.svg'];
+const SHELL = ['./', './index.html', './core.js?v=35', './workflow.js?v=35', './storage.js?v=35', './books.js?v=35', './books-ui.js?v=35', './i18n.js?v=35', './copy.js?v=35', './api.js?v=35', './app.js?v=35', './ui.js?v=35', './design.css?v=35', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

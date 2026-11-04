@@ -14,6 +14,10 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
+## Visible language selector (shell v35)
+
+Language selection is directly available in the header again, beside the tagline, on every screen. The settings sheet still contains appearance controls. The selector retains all languages and saved preferences, with a 44px touch target and 16px text. Versioned assets retain the v34 cache-upgrade fix.
+
 ## Cache upgrade fix (shell v34)
 
 Scripts and styles now use release-qualified URLs (`?v=34`), matching the offline precache. Previously, a returning browser could fetch v33 HTML while its v32 service worker served old unversioned JavaScript. Removing the duplicate library button then caused old book UI code to fail initialization, leaving the new settings button inert. Versioned asset requests bypass those old cache entries on the first navigation; no browser data reset is needed. A regression test starts the real v32 cached shell, serves current HTML while retaining the old worker, verifies settings and draft preservation, then updates the worker and repeats offline. Footer: `build: settings-cache-fix (shell v34)`.

@@ -44,6 +44,7 @@
     }
     document.querySelector('meta[name="theme-color"]').content = dusk ? '#11162d' : '#f5f0e6';
     document.getElementById('settings-open').setAttribute('aria-label', t('settings'));
+    document.getElementById('lang-select').setAttribute('aria-label', t('language'));
     const card = document.querySelector('#screen-' + screen + '>.card');
     if (card) {
       const heading = card.querySelector('.section-heading');

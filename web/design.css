@@ -214,6 +214,9 @@ html[data-theme] .brand{gap:10px;min-width:0}
 html[data-theme] header h1{font-size:clamp(18px,5.2vw,24px);letter-spacing:-.65px;overflow-wrap:normal}
 html[data-theme] .brand-symbol{width:38px;height:38px;flex-shrink:0}
 html[data-theme] header p{font-size:14px;line-height:1.7;margin:12px 0 0;max-width:32em}
+.header-context{display:flex;align-items:center;gap:12px;margin-top:12px}
+html[data-theme] .header-context p{flex:1;min-width:0;margin:0;font-size:13px;line-height:1.65}
+html[data-theme] .header-context select{flex:0 0 108px;width:108px;max-width:none;min-height:44px;margin:0;padding:8px;font-size:16px;background:var(--inset)}
 #settings-open{width:44px;height:44px;flex:0 0 44px;padding:10px;margin:0;border-color:var(--line);background:var(--inset);border-radius:50%}
 html[data-theme] nav{margin:0 0 12px;padding:5px;border-radius:18px;gap:4px}
 html[data-theme] nav button{min-height:62px;padding:8px 2px;gap:4px}
