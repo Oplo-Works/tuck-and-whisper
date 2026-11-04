@@ -62,7 +62,7 @@ test('v42 recorder mobile allowed recording stops locally and converts only on e
   await page.locator('#record-btn').click(); await expect(page.locator('#recording-status')).toContainText('Recording.');
   await expect(page.locator('#stop-recording')).toBeVisible(); await expect(page.locator('#voice-input')).toBeDisabled();
   await expect(page.locator('#transcribe-btn')).toBeDisabled(); await shot(page, 'recording');
-  await page.locator('#stop-recording').click(); await expect(page.locator('#recording-status')).toContainText('Recording ready');
+  await page.locator('#stop-recording').click(); await expect(page.locator('#recording-status')).toContainText('Recording ready'); await shot(page, 'recording-ready');
   expect(calls).toHaveLength(0); await expect(page.locator('#memo-input')).toHaveValue('SYNTHETIC_EXISTING_NOTE');
   await expect(page.locator('#voice-warning')).toBeVisible();
   expect(await page.evaluate(() => TawRecorder.getFile().type)).toBe('audio/mp4');
@@ -171,4 +171,38 @@ test('v42 real Chrome MediaRecorder and decode pipeline use synthetic microphone
     console.log('Synthetic Chrome recording format:', await page.evaluate(() => TawRecorder.getFile().type));
     await page.locator('#transcribe-btn').click(); await expect(page.locator('#memo-input')).toHaveValue('SYNTHETIC_MICROPHONE_RESULT'); expect(calls).toBe(1);
   } finally { await browser.close(); }
+});
+test('v43 recorder mobile stopping a recording highlights Convert to Text, shows saved badge, and reveals off-screen CTA', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 420 }); const calls = await boot(page);
+  await expect(page.locator('#recording-saved')).toBeHidden();
+  const disabledStyle = await page.locator('#transcribe-btn').evaluate(el => { const s = getComputedStyle(el); return { opacity: s.opacity, borderStyle: s.borderStyle, boxShadow: s.boxShadow, bg: s.backgroundImage }; });
+  expect(disabledStyle.opacity).toBe('0.38'); expect(disabledStyle.borderStyle).toBe('dashed'); expect(disabledStyle.boxShadow).toBe('none');
+  await page.locator('#record-btn').click(); await page.evaluate(() => window.scrollTo(0, 0));
+  expect(await page.locator('#transcribe-btn').evaluate(el => el.getBoundingClientRect().bottom > window.innerHeight)).toBe(true);
+  await page.locator('#stop-recording').evaluate(el => el.click());
+  await expect(page.locator('#recording-saved')).toBeVisible();
+  await expect(page.locator('#recording-saved')).toContainText('Recording saved · 00:01');
+  await expect(page.locator('#recording-status')).toHaveClass(/is-ready/);
+  await expect(page.locator('#recording-status')).toHaveAttribute('aria-live', 'polite');
+  await expect(page.locator('#recording-status')).toContainText('↓ Recording ready. Choose Convert to Text below.');
+  await expect(page.locator('#transcribe-btn')).toBeEnabled();
+  await expect(page.locator('#transcribe-btn')).toBeFocused();
+  await expect(page.locator('#transcribe-btn')).toBeInViewport();
+  for (const theme of ['dusk', 'paper']) {
+    if (theme === 'paper') await page.locator('#theme-toggle').click();
+    const styles = await page.evaluate(() => {
+      const t = getComputedStyle(document.getElementById('transcribe-btn')), e = getComputedStyle(document.getElementById('extract-btn'));
+      return { opacity: t.opacity, borderStyle: t.borderStyle, boxShadow: t.boxShadow, bg: t.backgroundImage, extractBg: e.backgroundImage };
+    });
+    expect(styles.opacity).toBe('1'); expect(styles.borderStyle).toBe('solid');
+    expect(styles.boxShadow).not.toBe('none'); expect(styles.bg).toContain('linear-gradient');
+    expect(styles.bg).not.toBe(styles.extractBg);
+  }
+  await page.locator('#lang-select').selectOption('ko');
+  await expect(page.locator('#recording-saved')).toContainText('녹음 저장됨 · 00:01');
+  await expect(page.locator('#recording-status')).toContainText('↓ 녹음이 준비됐어요. 아래 ‘메모로 변환’을 눌러 주세요.');
+  await page.locator('#lang-select').selectOption('fr');
+  await expect(page.locator('#recording-saved')).toContainText('Recording saved · 00:01');
+  expect(calls).toHaveLength(0);
+  await expect(page.locator('#recording-saved')).not.toBeEmpty();
 });

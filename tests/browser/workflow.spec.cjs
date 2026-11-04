@@ -344,7 +344,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: voice-and-fresh-drafts (shell v42)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: voice-ready-clarity (shell v43)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -1305,7 +1305,7 @@ test('v42 refresh reset failure preserves the complete draft and saved book', as
   await boot(page); await reading(page, true);
   await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
   const books = await savedBooks(page);
-  await page.route('**/storage.js?v=42', async route => {
+  await page.route('**/storage.js?v=43', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()) + '\nTawStorage.clearArchived = async () => { throw new Error("Synthetic reset failure"); };' });
   });

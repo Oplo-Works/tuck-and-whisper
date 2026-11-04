@@ -7,8 +7,8 @@
 <title>Tuck and Whisper</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('taw-theme')==='paper'?'paper':'dusk'}catch{document.documentElement.dataset.theme='dusk'}</script>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon.svg?v=42" type="image/svg+xml">
-<link rel="stylesheet" href="design.css?v=42"></head><body>
+<link rel="icon" href="icon.svg?v=43" type="image/svg+xml">
+<link rel="stylesheet" href="design.css?v=43"></head><body>
 <header><div class="brand-row"><div class="brand"><span class="brand-symbol" data-icon="together" aria-hidden="true"></span><h1>Tuck and Whisper</h1></div><button id="theme-toggle" type="button" aria-pressed="false"><span></span></button></div><div class="header-context"><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></div></header>
 <main>
 <p id="language-note" class="hint" hidden data-copy="translation"></p>
@@ -25,7 +25,7 @@
 <div id="memo-section">
 <label for="memo-input" data-copy="memo" data-icon="note"></label><textarea id="memo-input" rows="5" aria-describedby="voice-warning"></textarea>
 <p class="hint" data-copy="memoWays"></p>
-<details id="voice-tools"><summary data-copy="voice" data-icon="voice"></summary><p class="hint" data-copy="voiceInfo"></p><div id="recording-controls" class="recording-controls"><button id="record-btn" type="button" data-copy="recordStart" data-icon="voice"></button><button id="stop-recording" type="button" data-copy="recordStop" hidden></button><span id="recording-timer" role="timer" aria-live="off" hidden></span></div><p id="recording-status" class="hint" role="status" aria-live="polite"></p><label for="voice-input" class="hint" data-copy="recordOrFile"></label><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button><p id="voice-warning" data-copy="voiceReplace" hidden></p></details>
+<details id="voice-tools"><summary data-copy="voice" data-icon="voice"></summary><p class="hint" data-copy="voiceInfo"></p><div id="recording-controls" class="recording-controls"><button id="record-btn" type="button" data-copy="recordStart" data-icon="voice"></button><button id="stop-recording" type="button" data-copy="recordStop" hidden></button><span id="recording-timer" role="timer" aria-live="off" hidden></span><span id="recording-saved" class="recording-saved" data-icon="check" hidden><span id="recording-saved-text"></span></span></div><p id="recording-status" class="hint" role="status" aria-live="polite"></p><label for="voice-input" class="hint" data-copy="recordOrFile"></label><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" type="button" class="primary" data-copy="transcribe" data-icon="arrow"></button><p id="voice-warning" data-copy="voiceReplace" hidden></p></details>
 </div>
 <button id="extract-btn" aria-describedby="extract-progress" class="primary" data-copy="extract" data-icon="arrow"></button>
 <p id="extract-progress" class="action-progress" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -57,7 +57,7 @@
 </div><div id="reading-actions" class="sticky-actions"><p id="book-save-status" role="status"></p><div class="action-row"><button id="save-book" class="primary" data-copy="saveBook" data-icon="save"></button><button id="export-book" data-copy="export" data-icon="download"></button></div></div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><details id="library-management"><summary data-copy="manageLibrary"></summary><button id="delete-all" data-copy="deleteAll" data-icon="trash"></button></details></div></section>
 <dialog id="book-dialog" aria-labelledby="saved-book-title"><div class="dialog-controls"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download" data-icon="download"></button></div></div><p id="book-snapshot" class="hint" hidden data-copy="past"></p><details id="export-info"><summary data-copy="exportDetails"></summary><p id="book-note" class="hint" data-copy="exportHint"></p></details><div id="book-content"></div></dialog>
-</main><footer>build: voice-and-fresh-drafts (shell v42)</footer>
-<script src="core.js?v=42"></script><script src="workflow.js?v=42"></script><script src="storage.js?v=42"></script><script src="books.js?v=42"></script><script src="books-ui.js?v=42"></script><script src="i18n.js?v=42"></script><script src="copy.js?v=42"></script><script src="ui.js?v=42"></script>
-<script src="api.js?v=42"></script><script src="recorder.js?v=42"></script><script src="app.js?v=42"></script>
+</main><footer>build: voice-ready-clarity (shell v43)</footer>
+<script src="core.js?v=43"></script><script src="workflow.js?v=43"></script><script src="storage.js?v=43"></script><script src="books.js?v=43"></script><script src="books-ui.js?v=43"></script><script src="i18n.js?v=43"></script><script src="copy.js?v=43"></script><script src="ui.js?v=43"></script>
+<script src="api.js?v=43"></script><script src="recorder.js?v=43"></script><script src="app.js?v=43"></script>
 </body></html>

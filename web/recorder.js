@@ -5,10 +5,10 @@
   let app, session = null, file = null, status = '', elapsed = 0;
   const $ = id => document.getElementById(id);
   const supported = () => window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder === 'function';
-  const busy = () => !!session;
+  const busy = () => !!session, clock = s => Math.floor(s / 60).toString().padStart(2, '0') + ':' + (s % 60).toString().padStart(2, '0');
   function render() {
     if (!app) return;
-    const active = session?.recorder?.state === 'recording';
+    const active = session?.recorder?.state === 'recording', ready = !!file && !busy();
     $('record-btn').disabled = busy() || app.converting() || !supported();
     $('record-btn').hidden = busy();
     $('stop-recording').hidden = !busy();
@@ -16,9 +16,9 @@
     $('stop-recording').disabled = !!session?.stopping;
     $('voice-input').disabled = busy();
     $('recording-timer').hidden = !active;
-    $('recording-timer').textContent = Math.floor(elapsed / 60).toString().padStart(2, '0') + ':' + (elapsed % 60).toString().padStart(2, '0') + ' / 10:00';
+    $('recording-timer').textContent = clock(elapsed) + ' / 10:00'; $('recording-saved').hidden = !ready; $('recording-saved-text').textContent = ready ? app.t('recordSaved', { duration: clock(elapsed) }) : '';
     $('recording-status').textContent = app.t(status || (!supported() ? 'recordUnsupported' : file ? 'recordReady' : ''));
-    $('recording-controls').classList.toggle('is-recording', !!active);
+    $('recording-controls').classList.toggle('is-recording', !!active); $('recording-controls').classList.toggle('is-ready', ready); $('recording-status').classList.toggle('is-ready', ready);
   }
   function changed() { render(); app?.changed(); }
   function release(s) {
@@ -50,10 +50,10 @@
       const mime = s.recorder.mimeType || s.chunks[0]?.type || 'audio/mp4';
       const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
       file = new File(s.chunks, 'parent-recording.' + ext, { type: mime });
-      status = s.reason || 'recordReady';
+      elapsed = Math.min(600, Math.max(elapsed, s.started ? Math.max(1, Math.round((Date.now() - s.started) / 1000)) : 1)); status = s.reason || 'recordReady';
     }
     s.chunks = []; changed();
-    if (focusNext) (file ? $('transcribe-btn') : $('record-btn')).focus({ preventScroll: true });
+    const next = $('voice-tools')?.open && !$('voice-tools')?.closest('[hidden]') && !document.hidden ? (file ? $('transcribe-btn') : (focusNext ? $('record-btn') : null)) : null; if (next) { next.focus({ preventScroll: true }); const r = next.getBoundingClientRect(), vh = window.visualViewport?.height || window.innerHeight; if (file && (r.bottom > vh || r.top < 0)) next.scrollIntoView({ block: 'nearest' }); }
   }
   async function start() {
     if (busy() || app.converting()) return;

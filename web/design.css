@@ -339,4 +339,13 @@ main{padding:0;max-width:none}
 #recording-timer{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text);font-size:14px}
 #recording-status:empty{display:none}
 .recording-controls.is-recording #stop-recording{border-color:var(--text);box-shadow:0 0 16px #df91b32b}
-#voice-tools label[for=voice-input]{display:block;margin:12px 0 8px;font-weight:400}
+#voice-tools label[for=voice-input]{display:block;margin:14px 0 8px;font-weight:400}
+.recording-saved{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border:1px solid var(--accent2);border-radius:999px;background:var(--good-bg);color:var(--accent2);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.recording-saved[hidden]{display:none}
+.recording-controls.is-ready .recording-saved{order:-1}
+#recording-status.is-ready{margin:12px 0 6px;padding:12px 14px;border:1px solid var(--accent2);border-inline-start:4px solid var(--accent2);border-radius:12px;background:var(--good-bg);color:var(--text);font-size:15px;font-weight:700;line-height:1.55}
+html[data-theme] #voice-tools input[type=file]::file-selector-button{background:var(--inset);color:var(--text);border-color:var(--line);box-shadow:none}
+#transcribe-btn{width:100%;margin:12px 0 0;font-size:16px;font-weight:700;scroll-margin-block:96px}
+html[data-theme] #transcribe-btn:disabled{opacity:.38;background:var(--inset);color:var(--dim);border-color:var(--line);border-style:dashed;box-shadow:none;text-shadow:none}
+html[data-theme=dusk] #transcribe-btn:not(:disabled){background:linear-gradient(115deg,#a9ddd6,#c9c6f0 55%,#ebbdd8);color:#1d1a2e;border:2px solid #a9ddd6;box-shadow:0 10px 26px #070a1c66,0 0 0 3px #9fd6ce40;text-shadow:none}
+html[data-theme=paper] #transcribe-btn:not(:disabled){background:linear-gradient(115deg,#2e6860,#3d7a72 58%,#6e4d63);color:#fffdf9;border:2px solid #23524b;box-shadow:0 8px 20px #2e686033,0 0 0 3px #2e686024;text-shadow:none}
