@@ -5,7 +5,7 @@
     savedShort: ['저장됨', 'Saved'], manageLibrary: ['기록 관리', 'Manage records'], returnCapture: ['기록하러 가기', 'Go to capture'],
     readingTextOnly: ['지금은 글로 함께 읽어요. 그림을 추가하려면 기록 화면에서 사진을 선택해 주세요.', 'Read the text together. To add illustrations, select a photo in Capture.'],
     stepCapture: ['기록', 'Capture'], stepReview: ['확인', 'Review'], stepRead: ['함께 읽기', 'Read'], stepLibrary: ['보관함', 'Library'],
-    themeDusk: ['황혼', 'Dusk'], themePaper: ['종이', 'Paper'], privacySummary: ['사진·기록 보관 안내', '🔒 How your photos & notes are handled'],
+    themeDusk: ['Dusk', 'Dusk'], themePaper: ['Paper', 'Paper'], privacySummary: ['사진·기록 보관 안내', '🔒 How your photos & notes are handled'],
     statusUnreviewed: ['미확인 · 사용 안 함', 'Unreviewed · not used'], statusIncluded: ['확인됨 · 사용', 'Confirmed · included'],
     statusExcluded: ['확인됨 · 이번 읽기 제외', 'Confirmed · left out'], statusRejected: ['아니에요 · 사용 안 함', 'Rejected · not used'],
     textBook: ['글 이야기', 'Text story'],

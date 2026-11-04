@@ -35,9 +35,7 @@ async function setLanguage(page, language) {
   await page.locator('#lang-select').selectOption(language);
 }
 async function toggleTheme(page) {
-  await page.locator('#settings-open').click();
   await page.locator('#theme-toggle').click();
-  await page.locator('#settings-close').click();
 }
 async function review(page, withPhoto = false) {
   await page.locator('#memo-input').fill(memo);
@@ -83,7 +81,7 @@ test('v26 (a,c,g) capture DOM, visual and keyboard order; reset is outside the i
   for (const id of ['story', 'reading-question', 'testimony-input', 'save-testimony', 'book-title', 'event-date', 'save-book']) {
     await expect(page.locator('#screen-bedtime #' + id)).toHaveCount(1);
   }
-  await expect(page.locator('#settings-open')).toBeVisible();
+  await expect(page.locator('header #theme-toggle')).toBeVisible();
 });
 
 for (const lang of ['ko', 'en']) test('v26 (b,c,e,f) clear labels and static guidance: ' + lang, async ({ page }) => {
@@ -339,7 +337,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: visible-language (shell v35)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: direct-theme (shell v36)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -914,13 +912,16 @@ for (const width of [320, 360, 390, 430]) test('v33 mobile spacing, settings and
   await setLanguage(page, 'ko');
   await expect(page.locator('#nav-capture')).toHaveText('기록');
   await capture('capture');
-  await page.locator('#settings-open').click();
-  await expect(page.locator('#settings-dialog')).toBeVisible();
-  await expect(page.locator('#settings-close')).toBeFocused();
-  await expect(page.locator('#theme-toggle')).toHaveAccessibleName('종이');
-  await capture('settings-dialog');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#settings-open')).toBeFocused();
+  await expect(page.locator('#settings-dialog, #settings-open')).toHaveCount(0);
+  await expect(page.locator('header #theme-toggle')).toHaveAccessibleName('Paper');
+  expect((await page.locator('#theme-toggle').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await toggleTheme(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
+  await expect(page.locator('#theme-toggle')).toHaveAccessibleName('Dusk');
+  await capture('paper');
+  await toggleTheme(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dusk');
+  await expect(page.locator('#theme-toggle')).toHaveAccessibleName('Paper');
   await page.locator('#nav-library').click(); await capture('empty-library');
   await page.getByRole('button', { name: '기록하러 가기' }).click();
   await review(page);

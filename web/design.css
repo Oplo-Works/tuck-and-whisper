@@ -214,10 +214,10 @@ html[data-theme] .brand{gap:10px;min-width:0}
 html[data-theme] header h1{font-size:clamp(18px,5.2vw,24px);letter-spacing:-.65px;overflow-wrap:normal}
 html[data-theme] .brand-symbol{width:38px;height:38px;flex-shrink:0}
 html[data-theme] header p{font-size:14px;line-height:1.7;margin:12px 0 0;max-width:32em}
+html[data-theme] .brand-row #theme-toggle{flex:0 0 auto;min-height:44px;padding:9px 12px;font-size:14px;white-space:nowrap;gap:6px}
 .header-context{display:flex;align-items:center;gap:12px;margin-top:12px}
 html[data-theme] .header-context p{flex:1;min-width:0;margin:0;font-size:13px;line-height:1.65}
 html[data-theme] .header-context select{flex:0 0 108px;width:108px;max-width:none;min-height:44px;margin:0;padding:8px;font-size:16px;background:var(--inset)}
-#settings-open{width:44px;height:44px;flex:0 0 44px;padding:10px;margin:0;border-color:var(--line);background:var(--inset);border-radius:50%}
 html[data-theme] nav{margin:0 0 12px;padding:5px;border-radius:18px;gap:4px}
 html[data-theme] nav button{min-height:62px;padding:8px 2px;gap:4px}
 html[data-theme] #next-action{padding:0 4px 12px;font-size:13px}
@@ -287,9 +287,6 @@ body:has(dialog[open]){overflow:hidden}
 #export-options{margin-top:24px;border-top:1px solid var(--line);padding-top:14px}
 #export-options .use{border:0;margin:0;padding:0}
 #download-book{width:100%;margin:10px 0 0}
-#settings-dialog{width:100%;max-width:520px;margin:auto auto 0;border-radius:24px 24px 0 0;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
-#settings-dialog select{font-size:16px}
-#settings-dialog #theme-toggle{width:100%;min-height:48px;font-size:16px;background:var(--inset)}
 footer{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 @media(max-width:350px){html[data-theme] .card{padding:20px 16px}html[data-theme] .card h2{font-size:21px}.book-open{grid-template-columns:56px minmax(0,1fr);gap:10px}.book-thumb,.book-cover-empty{width:56px;height:76px}}
 

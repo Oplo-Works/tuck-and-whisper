@@ -14,6 +14,14 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
+## Design principles
+
+Design for iPhone and Android phone sizes first. Preserve the cozy night palette, gentle glow, and comfortable reading space while removing unused layout space. Preserve existing features and keep their purpose apparent through clear labels and familiar controls. Keep frequent actions, including language selection and theme switching, directly accessible; do not add dialogs or extra clicks merely to save space.
+
+## Direct theme control (shell v36)
+
+The labeled Paper / Dusk button is back in the top-right header and changes the theme in one tap. The settings icon and sheet are removed. Language selection remains directly visible; theme preferences still persist across reloads.
+
 ## Visible language selector (shell v35)
 
 Language selection is directly available in the header again, beside the tagline, on every screen. The settings sheet still contains appearance controls. The selector retains all languages and saved preferences, with a 44px touch target and 16px text. Versioned assets retain the v34 cache-upgrade fix.
