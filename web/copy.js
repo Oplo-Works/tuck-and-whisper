@@ -1,6 +1,8 @@
 /* New workflow copy: Korean/English reviewed; other selected languages use English. */
 (function () {
   const strings = {
+    savedArtNoPhoto: ['저장된 그림으로 함께 읽을 수 있어요. 그림을 새로 만들려면 기록 화면에서 사진을 선택해 주세요.', 'Your saved illustrations are ready to read. To create new illustrations, select a photo in Capture.'],
+    artworkNotSaved: ['그림은 생성됐지만 이 기기에 복사하지 못했어요. 이 탭을 유지하고 그림을 길게 눌러 저장해 주세요. 다시 생성할 필요는 없어요.', 'The illustration was generated, but could not be copied to this device. Keep this tab open and long-press the image to save it. You do not need to generate it again.'],
     extractBusy: ['읽을 내용을 준비하고 있어요…', 'Preparing your reading…'],
     choosePhoto: ['사진 선택', 'Choose photo'], removePhoto: ['사진 제거', 'Remove photo'], changePhoto: ['사진 변경', 'Change photo'],
     photoChangeImpact: ['사진을 추가·변경·제거하면 현재 확인 내용과 이야기·그림 초안을 다시 준비해야 해요. 메모와 보관한 이야기는 남아요.', 'Adding, changing or removing the photo restarts the current review, story and artwork drafts. Your note and saved books remain.'],
@@ -44,7 +46,7 @@
     voiceCheck: ['음성을 변환했다면 메모를 먼저 확인하세요.', 'Please double-check your note before moving to the next step.'],
     voiceBusy: ['음성을 글로 바꾸는 중이에요. 완료되면 메모를 확인한 뒤 이야기 준비 시작을 눌러 주세요.', 'Converting audio to text. When it finishes, check the memo before selecting Start preparing.'],
     transcribe: ['메모로 변환', 'Convert to Text'], busy: ['준비하고 있어요…', 'Working…'],
-    retention: ['메모·확인 내용·아이의 말은 이 브라우저에 저장돼요. 원본 사진은 저장하지 않아요. 아직 보관하지 않은 그림은 새로고침하면 사라져요.', 'Memo, review decisions and your child’s words stay in this browser. Original photos are not saved. Unsaved artwork disappears on reload.'],
+    retention: ['메모·확인 내용·아이의 말은 이 브라우저에 저장돼요. 원본 사진은 저장하지 않아요. 생성한 그림도 현재 초안과 함께 자동 저장돼요.', 'Memo, review decisions and your child’s words stay in this browser. Original photos are not saved. Generated illustrations are also autosaved with the current draft.'],
     inputPrivacy: ['추출할 때 메모와 선택한 사진을 AI 서비스에 보내요.', 'Extraction sends your memo and optional photo to the AI service.'],
     confirm: ['맞아요', 'Confirm'], reject: ['아니에요', 'Reject'], include: ['이번 이야기에 사용', 'Use in this story'],
     ungrounded: ['메모 원문을 찾지 못했어요. 메모를 수정하고 다시 추출해 주세요.', 'Source passage missing. Edit the memo and extract again.'],

@@ -8,9 +8,10 @@
   // corrupted: the stored record failed sanitize; quarantined keeps its raw form.
   let synced = false, conflicted = false, retrying = false, corrupted = false, quarantined = null;
   let photoFile = null, photoData = null, photoURL = null, art = null, acceptedArt = null;
-  // Paragraph illustrations, aligned to W.paragraphs(record) indexes. Session-only
-  // like the single illustration; saved books carry their own copies.
+  // Generated pictures are autosaved with their source revision. Original photos
+  // remain session-only; saved books continue to carry independent copies.
   let paragraphArt = [], paragraphBusy = [], paragraphFailed = [];
+  let lastStoryRender = null;
   let screen = 'capture', running = {}, statuses = {}, loaded = false, voiceConverted = false;
   let navigationReady = false, restoringHistory = false;
   const t = (key, vars) => window.TawCopy(key, I.getLanguage(), vars);
@@ -40,12 +41,13 @@
   }
   function persist() {
     if (!loaded || blocked || !db) return Promise.resolve(false);
-    let snapshot;
+    let snapshot, artwork;
     try { snapshot = W.sanitize(record); } catch (e) { storageWarning(false, report('sanitize', e)); return Promise.resolve(false); }
+    artwork = artworkSnapshot(snapshot);
     $('save-status').textContent = '';
     queue = queue.then(async () => {
       if (blocked) return false;
-      try { storageVersion = await S.save(db, snapshot, storageVersion); $('save-status').textContent = t('savedShort'); return true; }
+      try { storageVersion = await S.save(db, snapshot, storageVersion, false, artwork); $('save-status').textContent = t('savedShort'); return true; }
       catch (error) { const conflict = error.name === 'ConflictError', code = report('save', error); storageWarning(conflict, code); return false; }
     });
     return queue;
@@ -94,6 +96,37 @@
   }
   function invalidate() { jobs.invalidate(); running = {}; statuses = {}; art = null; acceptedArt = null; paragraphArt = []; paragraphBusy = []; paragraphFailed = []; message(''); }
   function clearParagraphArt() { paragraphArt = []; paragraphBusy = []; paragraphFailed = []; }
+  function localPicture(url) {
+    return typeof url === 'string' && url.length <= 28 * 1024 * 1024 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(url) ? url : null;
+  }
+  function artworkKey(value) {
+    return JSON.stringify([value.dayId, value.sourceRevision, value.contentRevision, value.identity, W.paragraphs(value).map(p => p.text)]);
+  }
+  function artworkSnapshot(value) {
+    if (!W.imageAllowed(value)) return null;
+    const pictures = paragraphArt.slice(0, W.PARAGRAPH_ART_LIMIT).map(localPicture);
+    const draft = localPicture(art), approved = localPicture(acceptedArt);
+    if (!draft && !approved && !pictures.some(Boolean)) return null;
+    return { key: artworkKey(value), draft, approved, paragraphs: pictures };
+  }
+  function restoreArtwork(saved) {
+    art = null; acceptedArt = null; clearParagraphArt();
+    if (!saved || !W.imageAllowed(record) || saved.key !== artworkKey(record)) return;
+    art = localPicture(saved.draft); acceptedArt = localPicture(saved.approved);
+    if (Array.isArray(saved.paragraphs)) paragraphArt = W.paragraphs(record).slice(0, W.PARAGRAPH_ART_LIMIT)
+      .map((p, index) => p.sensitive ? null : localPicture(saved.paragraphs[index]));
+  }
+  async function retainPicture(url) {
+    if (localPicture(url)) return url;
+    try {
+      // Resolve temporary image URLs once; navigation no longer fetches them again.
+      return await window.TawBooks.dataURL(await window.TawBooks.artwork(url));
+    } catch {
+      // Keep the paid result visible even if the image host disallows downloading.
+      // Never silently regenerate a picture because its local copy failed.
+      return url;
+    }
+  }
   // The single fixed anchor for every paragraph call: the parent-approved
   // illustration when there is one, otherwise the original photo. A generated
   // paragraph image is never used as an anchor (no chaining).
@@ -243,6 +276,10 @@
   // content (image, failure note, text-only note, or a make/redraw button)
   // varies. No page-turning UI: pairs simply follow the reading flow.
   function renderStory() {
+    const state = [record.story, W.prepared(record), paragraphArtAllowed(), hasArtAnchor(), !!artAnchor(), I.getLanguage(),
+      ...paragraphArt, '|busy|', ...paragraphBusy, '|failed|', ...paragraphFailed];
+    if (lastStoryRender && state.length === lastStoryRender.length && state.every((value, index) => value === lastStoryRender[index])) return;
+    lastStoryRender = state;
     const target = $('story'); target.replaceChildren();
     if (!W.validOutput(record, record.story)) return;
     if (record.story.fallback) target.append(node('p', t('fallback'), 'hint'));
@@ -322,7 +359,9 @@
     $('para-art-tools').hidden = !storyValid;
     $('para-art-all').hidden = !hasArtAnchor();
     $('para-art-all').disabled = !paragraphArtAllowed() || paragraphBusy.some(Boolean);
-    $('para-art-hint').textContent = !storyValid ? '' : !hasArtAnchor() ? t('readingTextOnly') : !W.imageAllowed(record) ? t('paraGate') : '';
+    $('para-art-hint').textContent = !storyValid ? '' : !hasArtAnchor() ? t(paragraphArt.some(Boolean) ? 'savedArtNoPhoto' : 'readingTextOnly') : !W.imageAllowed(record) ? t('paraGate') : '';
+    const nonlocal = [art, acceptedArt, ...paragraphArt].some(url => url && !localPicture(url));
+    $('artwork-save-status').textContent = nonlocal ? t('artworkNotSaved') : '';
     $('briefing-status').textContent = running.briefing ? t('busy') : (statuses.briefing || '');
     $('story-status').textContent = running.story ? t('busy') : (statuses.story || '');
     $('briefing-retry').disabled = !ready || !!running.briefing; $('story-retry').disabled = !ready || !!running.story;
@@ -332,10 +371,12 @@
     $('question-meta').textContent = record.question ? t(record.question.edited ? 'edited' : 'suggested') : '';
     $('reading-question').textContent = W.validQuestion(record, record.question) ? record.question.text : t('generalQuestion');
     if (!ready) $('story').replaceChildren(node('p', t('noMemo')));
-    $('reading-art').replaceChildren();
-    if (acceptedArt && W.imageAllowed(record)) $('reading-art').append(image(acceptedArt));
-    // Restricted photo conversation has no memo-derived names or assertions.
-    if (!ready && photoURL) $('reading-art').append(image(photoURL));
+    // Reuse the displayed image node on navigation, including remote fallback images.
+    const readingImage = acceptedArt && W.imageAllowed(record) ? acceptedArt : !ready ? photoURL : null;
+    if ($('reading-art').dataset.source !== (readingImage || '')) {
+      $('reading-art').replaceChildren(); if (readingImage) $('reading-art').append(image(readingImage));
+      $('reading-art').dataset.source = readingImage || '';
+    }
     $('art-preview').replaceChildren(); if (art && W.imageAllowed(record)) $('art-preview').append(image(art));
     $('art-approval').hidden = !art || !W.imageAllowed(record);
     $('style-btn').disabled = !photoFile || !W.imageAllowed(record) || !!running.style;
@@ -399,9 +440,9 @@
     try {
       const data = photoData || await API.photo(file);
       if (!jobs.current(token)) return;
-      const result = await API.style(data);
+      const result = await retainPicture(await API.style(data));
       if (!jobs.current(token)) return;
-      art = result; acceptedArt = null; clearParagraphArt();
+      art = result; acceptedArt = null; clearParagraphArt(); await persist();
     } catch (e) { if (jobs.current(token)) statuses.style = t('failed', { message: e.message }); }
     finally { if (jobs.current(token)) { running.style = false; render(); } }
   }
@@ -419,16 +460,21 @@
       // (in particular none with an empty images array) may go out.
       const anchor = artAnchor();
       if (!anchor) return;
-      const url = await API.paragraphArt(text, anchor);
+      const url = await retainPicture(await API.paragraphArt(text, anchor));
       if (!jobs.current(token)) return;
       paragraphArt[index] = url;
+      await persist();
     } catch (e) { if (jobs.current(token)) paragraphFailed[index] = true; }
     finally { if (jobs.current(token)) { paragraphBusy[index] = false; render(); } }
   }
   async function generateAllParagraphArt() {
     if (!paragraphArtAllowed()) return;
+    const token = jobs.begin('all-paragraphs');
     const paras = W.paragraphs(record);
-    for (const p of paras) if (!paragraphArt[p.index] && !p.sensitive && p.index < W.PARAGRAPH_ART_LIMIT) await generateParagraphArt(p.index);
+    for (const p of paras) {
+      if (!jobs.current(token)) return;
+      if (!paragraphArt[p.index] && !p.sensitive && p.index < W.PARAGRAPH_ART_LIMIT) await generateParagraphArt(p.index);
+    }
   }
   async function voice() {
     const file = $('voice-input').files[0]; if (!file || running.voice) return;
@@ -459,6 +505,7 @@
     }
     quarantined = null;
     storageVersion = stored.version; record = next; synced = true;
+    restoreArtwork(stored.artwork);
     loaded = true; blocked = false; conflicted = false; corrupted = false; $('storage-warning').hidden = true; $('memo-input').value = record.memoText;
     if (!stored.record) await persist();
   }
@@ -480,7 +527,7 @@
       try { localStorage.setItem('taw-theme', theme); } catch { /* Reading still works when preference storage is unavailable. */ }
       window.TawUI.render(screen, t);
     };
-    $('memo-input').oninput = () => change(W.input(record, $('memo-input').value));
+    $('memo-input').oninput = () => { if ($('memo-input').value !== record.memoText) change(W.input(record, $('memo-input').value)); };
     $('photo-input').onchange = () => updatePhoto($('photo-input').files[0] || null);
     $('remove-photo').onclick = () => { updatePhoto(null); $('photo-input').focus(); };
     $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
@@ -498,8 +545,8 @@
     $('open-bedtime').onclick = readTogether;
     $('para-art-all').onclick = generateAllParagraphArt;
     $('style-btn').onclick = style;
-    $('accept-art').onclick = () => { if (W.imageAllowed(record)) acceptedArt = art; render(); };
-    $('reject-art').onclick = () => { acceptedArt = null; art = null; render(); };
+    $('accept-art').onclick = () => { if (W.imageAllowed(record)) acceptedArt = art; persist(); render(); };
+    $('reject-art').onclick = () => { acceptedArt = null; art = null; persist(); render(); };
     $('save-testimony').onclick = () => { const text = $('testimony-input').value.trim(); if (!text) return;
       record = Object.assign({}, record, { testimony: record.testimony.concat({ text, at: Date.now(), revision: record.contentRevision, question: record.question?.text || null }) });
       $('testimony-input').value = ''; persist(); render(); };

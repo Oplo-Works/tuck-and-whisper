@@ -7,7 +7,11 @@ async function boot(page, hooks = {}) {
   const requests = [];
   await page.addInitScript(() => localStorage.setItem('taw-lang', 'ko'));
   // Fail closed: every non-local request must be handled by a mock registered below.
-  await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    // WebKit also routes local Blob images through interception. They never contact a model service.
+    return url.hostname === '127.0.0.1' || (url.protocol === 'blob:' && url.origin === 'http://127.0.0.1:4173') ? route.continue() : route.abort();
+  });
   await page.route('https://taw-meta-proxy.minkyuthebuilder.workers.dev/**', async route => {
     const req = route.request(), body = req.postDataJSON(); requests.push({ url: req.url(), body });
     if (req.url().endsWith('/api/image')) {
@@ -295,10 +299,12 @@ test('T22 saved artwork survives reload, while original photo stays session-only
   await page.locator('#books .card button').first().click(); await expect(page.locator('#book-dialog')).toBeVisible();
   await expect(page.locator('#book-content img')).toBeVisible(); await expect(page.locator('#book-content')).toContainText(passages[0]); await expect(page.locator('#book-snapshot')).toContainText('보관 당시');
 });
-test('T23 unsaved artwork is not restored but prepared text is', async ({ page }) => {
-  await boot(page); await reading(page, true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
+test('T23 generated draft artwork and prepared text are restored on reload', async ({ page }) => {
+  await boot(page); await reading(page, true);
+  await expect(page.locator('#save-status')).toContainText('저장됨');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY);
   await page.locator('#nav-preview').click(); await expect(page.locator('#story')).toContainText(passages[0]);
-  await expect(page.locator('#reading-art img')).toHaveCount(0);
+  await expect(page.locator('#reading-art img')).toHaveCount(1);
 });
 test('T24 storage failure cannot display saved-book success', async ({ page }) => {
   await boot(page); await reading(page);
@@ -338,7 +344,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: nearby-progress (shell v38)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: retained-artwork (shell v39)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -678,7 +684,7 @@ test('v23 (a) without a photo, paragraph slots are text-only with guidance, no i
   for (const p of passages) expect(html).toContain(p); expect(html).not.toContain('data:image/');
   expect(imageRequests(requests)).toHaveLength(0);
 });
-test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no new image call, and a saved book keeps its pairs', async ({ page }) => {
+test('v23 (c) after reload the photo anchor is gone: generated pictures restore, no new image call, and a saved book keeps its pairs', async ({ page }) => {
   const requests = await boot(page); await reading(page, true);
   await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
   await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
@@ -687,11 +693,11 @@ test('v23 (c) after reload the photo anchor is gone: slots stay text-only, no ne
   await expect(page.locator('#photo-status')).toHaveText(''); // original photo is session-only
   await page.locator('#nav-preview').click();
   await expect(page.locator('#story')).toContainText(passages[0]); // prepared text story still reads
-  await expect(page.locator('#para-art-all')).toBeDisabled();
+  await expect(page.locator('#para-art-all')).toBeEnabled();
   for (let i = 0; i < 3; i++) {
-    await expect(page.locator('#story .para-art').nth(i)).toBeHidden();
-    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(0);
-    await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(0);
+    await expect(page.locator('#story .para-art').nth(i)).toBeVisible();
+    await expect(page.locator('#story .para-art').nth(i).locator('button')).toHaveCount(1);
+    await expect(page.locator('#story .para-art').nth(i).locator('img')).toHaveCount(1);
   }
   expect(imageRequests(requests)).toHaveLength(callsBefore); // nothing new went out after the anchor vanished
   // The book saved before the reload keeps every paragraph+illustration pair.
@@ -1127,4 +1133,85 @@ test('v38 failed or invalidated preparation clears nearby feedback and permits r
   await expect(page.locator('#extract-progress')).toBeEmpty();
   await expect(page.locator('#extract-btn')).toBeEnabled();
   second.resolve(); await expect(page.locator('#memo-input')).toHaveValue('준비 도중 수정한 메모');
+});
+
+for (const width of [390]) test('v39 mobile generated illustrations survive navigation without another generation call: ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  const requests = await boot(page); await reading(page, true);
+  await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  const sources = await page.locator('#story .para-art img').evaluateAll(imgs => imgs.map(img => img.src));
+  const calls = imageRequests(requests).length;
+  await page.locator('#nav-capture').click();
+  await page.locator('#memo-input').dispatchEvent('input'); // mobile input/autofill with unchanged text is not an edit
+  await page.locator('#nav-preview').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  for (const target of ['#nav-capture', '#nav-review']) {
+    await page.locator(target).click(); await page.locator('#nav-preview').click();
+    await expect(page.locator('#story .para-art img')).toHaveCount(3);
+    expect(await page.locator('#story .para-art img').evaluateAll(imgs => imgs.map(img => img.src))).toEqual(sources);
+  }
+  await page.goBack(); await page.goForward(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  expect(imageRequests(requests)).toHaveLength(calls);
+});
+
+test('v39 mobile temporary image URLs are copied once and survive navigation and reload without token use', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const requests = await boot(page); let generations = 0, imageReads = 0;
+  const reads = new Map();
+  await page.route('**/api/image', route => route.fulfill({ json: { data: [{ url: 'https://art.test/' + (++generations) + '.png' }] } }));
+  await page.route('https://art.test/**', async route => {
+    const url = route.request().url(), count = (reads.get(url) || 0) + 1; reads.set(url, count); imageReads++;
+    await route.fulfill(count === 1 ? { status: 200, headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' }, contentType: 'image/png', body: Buffer.from(png, 'base64') } : { status: 410, body: 'Expired image address' });
+  });
+  await review(page, true); await page.locator('#identity-details summary').click();
+  await page.locator('#identity-people').selectOption('same'); await page.locator('#identity-animals').selectOption('same');
+  await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story')).toContainText(passages[2]);
+  await page.locator('#para-art-all').click(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  const sources = await page.locator('#story .para-art img').evaluateAll(imgs => imgs.map(i => i.src));
+  expect(sources.every(src => src.startsWith('data:image/png;base64,'))).toBe(true);
+  expect(generations).toBe(3); expect(imageReads).toBe(3);
+  for (const nav of ['#nav-capture', '#nav-review', '#nav-library']) {
+    await page.locator(nav).click(); await page.locator('#nav-preview').click();
+    expect(await page.locator('#story .para-art img').evaluateAll(imgs => imgs.map(i => i.src))).toEqual(sources);
+  }
+  await page.goBack(); await page.goForward(); await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  await page.locator('#nav-review').click(); await page.locator('#prepare-btn').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY); await page.locator('#nav-preview').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(3);
+  expect(await page.locator('#story .para-art img').evaluateAll(imgs => imgs.map(i => i.src))).toEqual(sources);
+  expect(await page.locator('#story .para-art img').evaluateAll(imgs => imgs.every(i => i.complete && i.naturalWidth > 0))).toBe(true);
+  expect(generations).toBe(3); expect(imageReads).toBe(3);
+  await expect(page.locator('#photo-status')).toHaveText('');
+  await expect(page.locator('#para-art-all')).toBeDisabled(); // no original or approved single-image anchor
+  await page.locator('#save-book').click(); await expect(page.locator('#book-save-status')).toContainText('보관했어요');
+  expect((await savedBooks(page))[0].paragraphs.filter(p => p.artwork)).toHaveLength(3);
+  await page.locator('#nav-library').click(); await page.locator('#books .card button').first().click();
+  await expect(page.locator('#book-content img')).toHaveCount(3);
+  await expect.poll(() => page.locator('#book-content img').evaluateAll(imgs => imgs.every(i => i.complete && i.naturalWidth > 0))).toBe(true);
+  await page.locator('#book-dialog form button').click();
+  const original = requests.find(r => r.body.messages?.[0].content.startsWith('Extract')).body.messages[1].content.find(p => p.type === 'image_url').image_url.url;
+  const storedEntry = await page.evaluate(async () => { const db = await TawStorage.open(); const entry = await TawStorage.load(db); db.close(); return entry; });
+  expect(JSON.stringify(storedEntry)).not.toContain(original);
+  await page.locator('#nav-capture').click(); await page.locator('#memo-input').fill('바뀐 이야기');
+  await expect.poll(async () => (await stored(page)).memoText).toBe('바뀐 이야기');
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY); await page.locator('#nav-preview').click(); await page.locator('#open-bedtime').click();
+  await expect(page.locator('#story img')).toHaveCount(0);
+  expect(generations).toBe(3);
+});
+
+test('v39 failed local artwork write keeps the result in memory and retry restores it durably', async ({ page }) => {
+  const requests = await boot(page); await reading(page, true);
+  await failNextSave(page);
+  await page.locator('#story .para-art button').first().click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(1);
+  await expect(page.locator('#storage-warning')).toBeVisible();
+  const count = imageRequests(requests).length;
+  await page.locator('#nav-capture').click(); await page.locator('#nav-preview').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(1);
+  await page.locator('#retry-save').click(); await expect(page.locator('#storage-warning')).toBeHidden();
+  await page.reload(); await page.waitForFunction(() => window.TAW_READY); await page.locator('#nav-preview').click();
+  await expect(page.locator('#story .para-art img')).toHaveCount(1);
+  expect(imageRequests(requests)).toHaveLength(count);
 });

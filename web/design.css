@@ -81,7 +81,7 @@ textarea{resize:vertical}
 #memo-section details{margin-bottom:6px}
 #extract-btn{width:100%;margin-top:12px}
 .action-progress{margin:8px 0 0;padding:0 4px;color:var(--accent2);font-size:14px;line-height:1.6}
-.action-progress:empty{display:none}
+.action-progress:empty,#artwork-save-status:empty{display:none}
 .reset-actions{border-top:1px solid var(--line);padding-top:16px;margin:26px 0 14px}
 .reset-actions button,#delete-all{color:var(--danger);background:transparent;border-color:var(--danger)}
 #library-btn{background:transparent}

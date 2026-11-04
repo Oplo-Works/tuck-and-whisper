@@ -27,7 +27,7 @@
     if (!conflict && cause) e.cause = cause;
     return e;
   }
-  function save(db, record, expected, clearBooks = false) {
+  function save(db, record, expected, clearBooks = false, artwork) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(clearBooks ? ['current', 'books'] : ['current'], 'readwrite');
       const store = tx.objectStore('current'), req = store.get('day'); let conflict = false, failure = null;
@@ -35,7 +35,11 @@
       req.onsuccess = () => {
         if ((req.result ? req.result.version : 0) !== expected) { conflict = true; tx.abort(); return; }
         try {
-          const put = store.put({ version: expected + 1, record }, 'day'); put.onerror = () => { failure = failure || put.error; };
+          // Generated artwork and its exact source revision commit atomically.
+          // Originals never enter this field; older callers remain compatible.
+          const entry = { version: expected + 1, record };
+          if (artwork !== undefined) entry.artwork = artwork;
+          const put = store.put(entry, 'day'); put.onerror = () => { failure = failure || put.error; };
           if (clearBooks) tx.objectStore('books').clear();
         } catch (e) { failure = e; tx.abort(); }
       };
@@ -47,11 +51,24 @@
   function books(db) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction('books'), req = tx.objectStore('books').getAll();
-      tx.oncomplete = () => { try { resolve(req.result.map(booksAPI().normalize).sort(booksAPI().compare)); } catch (e) { reject(e); } };
+      tx.oncomplete = () => { try { resolve(req.result.map(decodeBook).map(booksAPI().normalize).sort(booksAPI().compare)); } catch (e) { reject(e); } };
       tx.onabort = () => reject(tx.error); tx.onerror = () => {};
     });
   }
-  function saveBook(db, book, expected) {
+  function decodeBook(book) {
+    if (book.artworkEncoding !== 'bytes-v1') return book; // Legacy Blob books remain readable.
+    const decode = image => image ? new Blob([image.bytes], { type: image.type }) : null;
+    const { artworkEncoding, ...decoded } = book;
+    decoded.artwork = decode(book.artwork);
+    if (Array.isArray(book.paragraphs)) decoded.paragraphs = book.paragraphs.map(p => ({ ...p, artwork: decode(p.artwork) }));
+    return decoded;
+  }
+  async function saveBook(db, book, expected) {
+    // Store bytes rather than browser-managed Blob files, which can fail to
+    // persist in WebKit. Finish reading before opening the CAS transaction.
+    const encode = async image => image ? { type: image.type, bytes: await image.arrayBuffer() } : null;
+    const storedBook = { ...book, artworkEncoding: 'bytes-v1', artwork: await encode(book.artwork) };
+    if (Array.isArray(book.paragraphs)) storedBook.paragraphs = await Promise.all(book.paragraphs.map(async p => ({ ...p, artwork: await encode(p.artwork) })));
     return new Promise((resolve, reject) => {
       const tx = db.transaction(['current', 'books'], 'readwrite'), req = tx.objectStore('current').get('day');
       let conflict = false, failure = null;
@@ -68,7 +85,8 @@
           all.onsuccess = () => {
             // Allocate a durable tie-breaker in the same transaction, even for identical timestamps.
             book.order = all.result.reduce((max, b) => Math.max(max, Number.isFinite(b.order) ? b.order : b.createdAt || 0), 0) + 1;
-            try { const add = store.add(book); add.onerror = () => { failure = failure || add.error; }; }
+            storedBook.order = book.order;
+            try { const add = store.add(storedBook); add.onerror = () => { failure = failure || add.error; }; }
             catch (e) { failure = e; tx.abort(); }
           };
         }

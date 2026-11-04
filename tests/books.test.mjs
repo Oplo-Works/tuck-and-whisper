@@ -25,6 +25,8 @@ test('books persist a snapshot and Blob; later edits cannot rewrite it', async (
   r.identity = { people: 'same', animals: 'same' };
   const book = B.snapshot(r, new Blob(['fake-image-for-storage-test'], { type: 'image/png' }), W);
   await S.saveBook(db, book, version); const loaded = (await S.books(db))[0];
+  const raw = await new Promise(resolve => { const tx = db.transaction('books'), req = tx.objectStore('books').get(book.id); tx.oncomplete = () => resolve(req.result); });
+  assert.equal(raw.artworkEncoding, 'bytes-v1'); assert.ok(raw.artwork.bytes instanceof ArrayBuffer);
   assert.equal(await loaded.artwork.text(), 'fake-image-for-storage-test'); assert.equal(loaded.lines[0], '우리의 하루.');
   version = await S.save(db, W.input(r, '새 메모'), version); assert.equal((await S.books(db))[0].lines[0], '우리의 하루.');
   await assert.rejects(S.saveBook(db, { ...book, id: 'stale' }, version), { name: 'ConflictError' });

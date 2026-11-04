@@ -1,6 +1,6 @@
 const { defineConfig } = require('@playwright/test');
 module.exports = defineConfig({
-  testDir: './tests/browser', grep: /v33 mobile|v37 mobile|v38 mobile/, timeout: 30000, workers: 1,
+  testDir: './tests/browser', grep: /v33 mobile|v37 mobile|v38 mobile|v39 mobile/, timeout: 30000, workers: 1,
   outputDir: './test-results/mobile',
   use: { baseURL: 'http://127.0.0.1:4173', headless: true, serviceWorkers: 'block', isMobile: true, hasTouch: true },
   projects: [

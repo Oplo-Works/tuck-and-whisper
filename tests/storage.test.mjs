@@ -35,3 +35,15 @@ test('v18: saveBook non-conflict abort keeps the request error as cause', async 
   assert.equal(conflict.name, 'ConflictError'); assert.equal(conflict.cause, undefined);
   assert.equal((await S.books(db)).length, 1); db.close();
 });
+
+test('generated draft artwork commits atomically with its matching record; conflict and failed write preserve both', async () => {
+  const db = await S.open(new IDBFactory());
+  const art = { key: 'day/revision/paragraphs', paragraphs: ['data:image/png;base64,aGVsbG8='] };
+  await S.save(db, { marker: 'original' }, 0, false, art);
+  await assert.rejects(S.save(db, { marker: 'stale' }, 0, false, { key: 'wrong' }), { name: 'ConflictError' });
+  await assert.rejects(S.save(db, { marker: 'invalid', fn() {} }, 1, false, null), { name: 'StorageError' });
+  assert.deepEqual(await S.load(db), { version: 1, record: { marker: 'original' }, artwork: art });
+  await S.save(db, { marker: 'edited' }, 1, false, null);
+  assert.equal((await S.load(db)).artwork, null);
+  db.close();
+});
