@@ -68,7 +68,7 @@ test('v42 recorder mobile allowed recording stops locally and converts only on e
   expect(await page.evaluate(() => TawRecorder.getFile().type)).toBe('audio/mp4');
   expect(await page.evaluate(() => window.trackStops)).toBeGreaterThan(0);
   await page.locator('#transcribe-btn').click(); await expect(page.locator('#memo-input')).toHaveValue('SYNTHETIC_PARENT_NOTE');
-  await expect(page.locator('#voice-check')).toBeVisible(); expect(calls).toHaveLength(1);
+  await expect(page.locator('#voice-check')).toBeVisible(); await expect(page.locator('#voice-warning')).toBeHidden(); expect(calls).toHaveLength(1);
   // WebKit's intercepted request body can omit Blob bytes; inspect FormData before fetch instead.
   expect(await page.evaluate(() => window.voicePayload)).toEqual({ name: 'audio.wav', header: [82, 73, 70, 70] });
 });
@@ -204,5 +204,5 @@ test('v43 recorder mobile stopping a recording highlights Convert to Text, shows
   await page.locator('#lang-select').selectOption('fr');
   await expect(page.locator('#recording-saved')).toContainText('Recording saved · 00:01');
   expect(calls).toHaveLength(0);
-  await expect(page.locator('#recording-saved')).not.toBeEmpty();
+  await expect(page.locator('#voice-warning')).toBeHidden(); await page.locator('#transcribe-btn').click(); await expect(page.locator('#memo-input')).toHaveValue('SYNTHETIC_PARENT_NOTE'); await expect(page.locator('#voice-warning')).toBeHidden(); expect(calls).toHaveLength(1);
 });

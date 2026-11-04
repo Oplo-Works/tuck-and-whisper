@@ -330,7 +330,7 @@
     $('extract-progress').textContent = running.extract ? t('extractBusy') : '';
     $('extract-btn').setAttribute('aria-busy', String(!!running.extract));
     $('voice-progress').hidden = !running.voice;
-    $('voice-warning').hidden = !voiceFile() || !record.memoText.trim();
+    $('voice-warning').hidden = !!running.voice || voiceConverted || !voiceFile() || !record.memoText.trim();
     $('voice-check').hidden = !voiceConverted;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
     $('photo-input').setAttribute('aria-label', t(photoFile ? 'changePhoto' : 'choosePhoto'));
@@ -563,7 +563,7 @@
       try { localStorage.setItem('taw-theme', theme); } catch { /* Reading still works when preference storage is unavailable. */ }
       window.TawUI.render(screen, t);
     };
-    $('memo-input').oninput = () => { if ($('memo-input').value !== record.memoText) change(W.input(record, $('memo-input').value)); };
+    $('memo-input').oninput = () => { if ($('memo-input').value !== record.memoText) { voiceConverted = false; change(W.input(record, $('memo-input').value)); } };
     $('photo-input').onchange = () => updatePhoto($('photo-input').files[0] || null);
     $('remove-photo').onclick = () => { updatePhoto(null); $('photo-input').focus(); };
     $('voice-input').onchange = () => { window.TawRecorder?.clear(); jobs.begin('voice'); running.voice = false; voiceConverted = false; render(); };
