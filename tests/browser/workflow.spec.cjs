@@ -69,7 +69,7 @@ test('v26 (a,c,g) capture DOM, visual and keyboard order; reset is outside the i
   await page.locator('#photo-input').focus(); await page.keyboard.press('Tab');
   await expect(page.locator('#memo-input')).toBeFocused();
   await page.keyboard.press('Tab'); await expect(page.locator('summary[data-copy=voice]')).toBeFocused();
-  expect(await page.locator('#extract-btn').evaluate(el => el.nextElementSibling.id)).toBe('preparation-notes');
+  expect(await page.locator('#extract-btn').evaluate(el => el.nextElementSibling.id)).toBe('extract-progress');
   expect(await page.locator('#new-day-btn').evaluate(el => el.closest('.card'))).toBeNull();
   const gap = await page.evaluate(() => document.querySelector('.reset-actions').getBoundingClientRect().top - document.querySelector('#screen-capture .card').getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(24);
@@ -338,7 +338,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: mobile-usability (shell v37)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: nearby-progress (shell v38)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
@@ -1083,4 +1083,48 @@ for (const width of [320, 390]) test('v37 mobile direct controls, inline artwork
   expect((await download).suggestedFilename()).toMatch(/\.html$/);
   await expect(page.locator('#screen-library')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+for (const width of [320, 390]) test('v38 mobile preparation feedback stays immediately below the pressed button: ' + width, async ({ page }, testInfo) => {
+  const pending = deferred(); await page.setViewportSize({ width, height: 844 });
+  await boot(page, { extract: pending }); await setLanguage(page, 'en');
+  await page.locator('#photo-input').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.locator('#memo-input').fill(memo);
+  const button = page.locator('#extract-btn'), progress = page.locator('#extract-progress');
+  await button.evaluate(el => el.scrollIntoView({ block: 'center' }));
+  const before = await button.evaluate(el => el.getBoundingClientRect().top + scrollY);
+  await button.click();
+  await expect(button).toBeDisabled(); await expect(button).toHaveAttribute('aria-busy', 'true');
+  await expect(progress).toHaveText('Preparing your reading…'); await expect(progress).toBeInViewport();
+  await expect(page.locator('#next-action')).not.toHaveText('Working…');
+  const geometry = await progress.evaluate(el => {
+    const b = document.getElementById('extract-btn').getBoundingClientRect(), p = el.getBoundingClientRect();
+    return { buttonTop: b.top + scrollY, gap: p.top - b.bottom, next: document.getElementById('extract-btn').nextElementSibling.id };
+  });
+  expect(Math.abs(geometry.buttonTop - before)).toBeLessThan(1);
+  expect(geometry.gap).toBeGreaterThanOrEqual(0); expect(geometry.gap).toBeLessThanOrEqual(12);
+  expect(geometry.next).toBe('extract-progress');
+  await page.screenshot({ path: `test-results/v38-${testInfo.project.name || 'chrome'}-${width}-preparing.png`, scale: 'css' });
+  await setLanguage(page, 'ko'); await expect(progress).toHaveText('읽을 내용을 준비하고 있어요…');
+  pending.resolve(); await expect(page.locator('#screen-review')).toBeVisible();
+  await page.locator('#nav-capture').click();
+  await expect(progress).toBeEmpty(); await expect(progress).toBeHidden();
+  await expect(button).toBeEnabled(); await expect(button).toHaveAttribute('aria-busy', 'false');
+});
+
+test('v38 failed or invalidated preparation clears nearby feedback and permits retry', async ({ page }) => {
+  await boot(page); const pending = deferred();
+  await page.route('**/api/spark', async route => { await pending.promise; await route.fulfill({ status: 500, json: { error: 'test failure' } }); });
+  await page.locator('#memo-input').fill(memo); await page.locator('#extract-btn').click();
+  await expect(page.locator('#extract-progress')).toBeVisible(); pending.resolve();
+  await expect(page.locator('#extract-progress')).toBeEmpty();
+  await expect(page.locator('#extract-btn')).toBeEnabled();
+  await expect(page.locator('#message')).toContainText('완료하지 못했어요');
+  const second = deferred();
+  await page.route('**/api/spark', async route => { await second.promise; await route.fulfill({ status: 500, json: {} }); });
+  await page.locator('#extract-btn').click(); await expect(page.locator('#extract-progress')).toBeVisible();
+  await page.locator('#memo-input').fill('준비 도중 수정한 메모');
+  await expect(page.locator('#extract-progress')).toBeEmpty();
+  await expect(page.locator('#extract-btn')).toBeEnabled();
+  second.resolve(); await expect(page.locator('#memo-input')).toHaveValue('준비 도중 수정한 메모');
 });

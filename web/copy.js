@@ -1,6 +1,7 @@
 /* New workflow copy: Korean/English reviewed; other selected languages use English. */
 (function () {
   const strings = {
+    extractBusy: ['읽을 내용을 준비하고 있어요…', 'Preparing your reading…'],
     choosePhoto: ['사진 선택', 'Choose photo'], removePhoto: ['사진 제거', 'Remove photo'], changePhoto: ['사진 변경', 'Change photo'],
     photoChangeImpact: ['사진을 추가·변경·제거하면 현재 확인 내용과 이야기·그림 초안을 다시 준비해야 해요. 메모와 보관한 이야기는 남아요.', 'Adding, changing or removing the photo restarts the current review, story and artwork drafts. Your note and saved books remain.'],
     editReading: ['질문·브리핑 수정', 'Edit question & briefing'],

@@ -279,7 +279,7 @@
     }
   }
   function render() {
-    let next = running.extract || running.story || running.briefing ? 'busy' :
+    let next = (running.extract && screen !== 'capture') || running.story || running.briefing ? 'busy' :
       !record.memoText.trim() ? 'nextCapture' : !record.candidates.length ? 'nextExtract' :
       !W.canPrepare(record) ? 'nextConfirm' : !W.prepared(record) ? 'nextPrepare' :
       screen === 'bedtime' ? 'nextSave' : 'nextRead';
@@ -287,6 +287,8 @@
     if (blocked) next = conflicted ? 'conflict' : corrupted ? 'corrupt' : 'unsaved';
     $('next-action').textContent = t(next);
     $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
+    $('extract-progress').textContent = running.extract ? t('extractBusy') : '';
+    $('extract-btn').setAttribute('aria-busy', String(!!running.extract));
     $('voice-progress').hidden = !running.voice;
     $('voice-warning').hidden = !$('voice-input').files.length || !record.memoText.trim();
     $('voice-check').hidden = !voiceConverted;
@@ -294,7 +296,7 @@
     $('photo-input').setAttribute('aria-label', t(photoFile ? 'changePhoto' : 'choosePhoto'));
     $('photo-pick-label').textContent = t(photoFile ? 'changePhoto' : 'choosePhoto');
     $('remove-photo').hidden = !photoFile;
-    $('photo-change-impact').hidden = !record.candidates.length && !running.extract;
+    $('photo-change-impact').hidden = !record.candidates.length;
     const previewPhoto = $('capture-photo-preview'); previewPhoto.hidden = !photoURL;
     if (previewPhoto.dataset.url !== (photoURL || '')) {
       previewPhoto.replaceChildren(); if (photoURL) previewPhoto.append(image(photoURL));

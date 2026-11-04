@@ -18,6 +18,12 @@ Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 
 
 Design for iPhone and Android phone sizes first. Preserve the cozy night palette, gentle glow, and comfortable reading space while removing unused layout space. Preserve existing features and keep their purpose apparent through clear labels and familiar controls. Keep frequent actions, including language selection and theme switching, directly accessible; do not add dialogs or extra clicks merely to save space.
 
+## Nearby preparation feedback (shell v38)
+
+Preparing a reading now announces progress immediately below the Prepare reading button, with a polite live status and a busy state on the disabled button. The Capture page no longer puts the same progress message above the card. The status occupies no space when idle and clears on completion, failure, or input invalidation. Starting extraction no longer introduces a photo-change notice above the button; that notice still appears when changing a previously reviewed draft.
+
+Validation: cache version/precache check, five focused Chromium cases (including cached-shell upgrade and failure recovery), and four 320/390px mobile Chromium/WebKit cases passed. Geometry checks verify that the button does not move and the progress text is directly underneath it. Release: `taw-shell-v38`, footer `build: nearby-progress (shell v38)`.
+
 ## Mobile usability (shell v37)
 
 Prepared stories open directly from Read. Question/briefing editing stays visible on the reading page. Photo selection has a localized Choose/Change control, a thumbnail, a separate Remove action, and an explanation before changing a reviewed draft. Inline people/animal checks on the reading page preserve and revalidate the existing confirmed text, question and title while invalidating artwork and stale image jobs. The original review controls and all source-validation rules remain available.
