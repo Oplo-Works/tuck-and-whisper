@@ -338,10 +338,10 @@ test('T37 actual service-worker shell reloads offline without caching user media
     const names = await caches.keys(); const cache = await caches.open(names.find(n => n.startsWith('taw-shell-')));
     return (await cache.keys()).map(r => r.url);
   });
-  expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
+  expect(cached.some(url => new URL(url).pathname.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: mobile-whisper (shell v33)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: settings-cache-fix (shell v34)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {

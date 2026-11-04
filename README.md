@@ -14,6 +14,10 @@ The child's bedtime answer is written down by the parent and saved as testimony,
 
 Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 2026). Vanilla JS, zero runtime dependencies.
 
+## Cache upgrade fix (shell v34)
+
+Scripts and styles now use release-qualified URLs (`?v=34`), matching the offline precache. Previously, a returning browser could fetch v33 HTML while its v32 service worker served old unversioned JavaScript. Removing the duplicate library button then caused old book UI code to fail initialization, leaving the new settings button inert. Versioned asset requests bypass those old cache entries on the first navigation; no browser data reset is needed. A regression test starts the real v32 cached shell, serves current HTML while retaining the old worker, verifies settings and draft preservation, then updates the worker and repeats offline. Footer: `build: settings-cache-fix (shell v34)`.
+
 ## UI update — mobile whisper (shell v33)
 
 The phone layout keeps the night sky, moon logo, reading typography, and generous memo field while removing redundant rows. Language/theme controls now live in an accessible settings sheet beside the brand. Draft save status sits beside the screen heading; book-save feedback stays beside the save action. Review metadata shares a row, selected decisions no longer glow, and the smaller review action bar sits outside the content card. Question fields grow with their text. Photo-free reading has one explanation instead of a disabled illustration button and repeated notices. The library uses full-width rows with small saved-artwork covers, an empty-state capture action, and collapsed record management. Saved-reading dialogs put export details after the story and keep their close control accessible.

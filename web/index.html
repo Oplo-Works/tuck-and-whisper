@@ -8,7 +8,7 @@
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('taw-theme')==='paper'?'paper':'dusk'}catch{document.documentElement.dataset.theme='dusk'}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="design.css"></head><body>
+<link rel="stylesheet" href="design.css?v=34"></head><body>
 <header><div class="brand-row"><div class="brand"><span class="brand-symbol" data-icon="moon" aria-hidden="true"></span><h1>Tuck and Whisper</h1></div><button id="settings-open" type="button" data-icon="settings" aria-label="Settings" aria-haspopup="dialog"></button></div><p>You missed the moment. You don't have to miss the story.</p></header>
 <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-heading"><h2 id="settings-title" data-copy="settings"></h2><form method="dialog"><button id="settings-close" data-copy="close" autofocus></button></form></div><label for="lang-select" data-copy="language"></label><select id="lang-select" aria-label="Language"></select><label for="theme-toggle" data-copy="appearance"></label><button id="theme-toggle" type="button" aria-pressed="false"><span></span></button></dialog>
 <main>
@@ -56,7 +56,7 @@
 </div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><details id="library-management"><summary data-copy="manageLibrary"></summary><button id="delete-all" data-copy="deleteAll" data-icon="trash"></button></details></div></section>
 <dialog id="book-dialog" aria-labelledby="saved-book-title"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><p id="book-snapshot" class="hint" hidden data-copy="past"></p><div id="book-content"></div><div id="export-options" hidden><p id="book-note" class="hint"></p><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
-</main><footer>build: mobile-whisper (shell v33)</footer>
-<script src="core.js"></script><script src="workflow.js"></script><script src="storage.js"></script><script src="books.js"></script><script src="books-ui.js"></script><script src="i18n.js"></script><script src="copy.js"></script><script src="ui.js"></script>
-<script src="api.js"></script><script src="app.js"></script>
+</main><footer>build: settings-cache-fix (shell v34)</footer>
+<script src="core.js?v=34"></script><script src="workflow.js?v=34"></script><script src="storage.js?v=34"></script><script src="books.js?v=34"></script><script src="books-ui.js?v=34"></script><script src="i18n.js?v=34"></script><script src="copy.js?v=34"></script><script src="ui.js?v=34"></script>
+<script src="api.js?v=34"></script><script src="app.js?v=34"></script>
 </body></html>

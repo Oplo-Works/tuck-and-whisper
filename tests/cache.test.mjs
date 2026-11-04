@@ -7,8 +7,8 @@ test('shell CACHE and footer match; each script is precached, user media is abse
   const version = Number(sw.match(/const CACHE = 'taw-shell-v(\d+)'/)[1]);
   assert.equal(version, Number(html.match(/shell v(\d+)/)[1]));
   const shell = sw.match(/const SHELL = \[([^\]]+)\]/)[1];
-  for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) { assert.ok(shell.includes("'./" + src + "'"), src); assert.ok(fs.existsSync('web/' + src)); }
-  for (const [, href] of html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)) { assert.ok(shell.includes("'./" + href + "'"), href); assert.ok(fs.existsSync('web/' + href)); }
+  for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) { assert.ok(shell.includes("'./" + src + "'"), src); assert.ok(fs.existsSync('web/' + src.split('?')[0])); assert.equal(new URL(src, 'https://app.test/').searchParams.get('v'), String(version)); }
+  for (const [, href] of html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)) { assert.ok(shell.includes("'./" + href + "'"), href); assert.ok(fs.existsSync('web/' + href.split('?')[0])); assert.equal(new URL(href, 'https://app.test/').searchParams.get('v'), String(version)); }
   assert.doesNotMatch(shell, /8940|data:|blob:|\.jpe?g|\.png|\.webp/);
   const status = execFileSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf8' });
   if (/^web\//m.test(status)) {
