@@ -11,7 +11,8 @@
   // Paragraph illustrations, aligned to W.paragraphs(record) indexes. Session-only
   // like the single illustration; saved books carry their own copies.
   let paragraphArt = [], paragraphBusy = [], paragraphFailed = [];
-  let screen = 'capture', running = {}, statuses = {}, loaded = false;
+  let screen = 'capture', running = {}, statuses = {}, loaded = false, voiceConverted = false;
+  let navigationReady = false, restoringHistory = false;
   const t = (key, vars) => window.TawCopy(key, I.getLanguage(), vars);
   function node(tag, text, cls) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; }
   function message(text) { $('message').textContent = text; $('message').hidden = !text; }
@@ -105,24 +106,90 @@
   function hasArtAnchor() { return !!(acceptedArt || photoData || photoFile); }
   function paragraphArtAllowed() { return W.imageAllowed(record) && hasArtAnchor(); }
   function change(next) { if (next === record) return; invalidate(); record = next; persist(); render(); }
-  function show(name) {
+  function show(name, options = {}) {
+    if (name === 'review' && !record.candidates.length) name = 'capture';
+    if (navigationReady && options.navigation !== 'none' && name !== screen) {
+      history.replaceState({ ...history.state, scroll: window.scrollY }, '');
+      history.pushState({ taw: true, screen: name, scroll: 0 }, '');
+    }
     screen = name;
     for (const el of document.querySelectorAll('main > section')) el.hidden = el.id !== 'screen-' + name;
-    render(); const h = $('screen-' + name).querySelector('h2'); if (h) h.focus(); window.scrollTo(0, 0);
+    if (name === 'bedtime' && photoFile && !W.imageAllowed(record)) $('reading-identity').open = true;
+    render(); const h = $('screen-' + name).querySelector('h2'); if (h) h.focus({ preventScroll: true });
+    window.scrollTo(0, options.scroll || 0);
+  }
+  function openDialog() {
+    if (!history.state?.dialog) {
+      history.replaceState({ ...history.state, scroll: window.scrollY }, '');
+      history.pushState({ taw: true, screen, dialog: true, scroll: window.scrollY }, '');
+    }
+    $('book-dialog').showModal();
+  }
+  function closeDialog() {
+    if (!restoringHistory && history.state?.dialog) history.back();
+  }
+  async function restoreHistory(event) {
+    if (!event.state?.taw) return;
+    restoringHistory = true;
+    try {
+      const state = event.state;
+      if ($('book-dialog').open && !state.dialog) $('book-dialog').close();
+      if (state.screen !== screen) {
+        if (state.screen === 'library') await window.TawBooksUI.library({ navigation: 'none' });
+        else show(state.screen, { navigation: 'none' });
+      }
+      if (state.dialog && !$('book-dialog').open && !window.TawBooksUI.reopen()) {
+        history.replaceState({ ...state, dialog: false }, '');
+      }
+      window.scrollTo(0, state.scroll || 0);
+    } finally { restoringHistory = false; }
   }
   function translate() {
-    document.documentElement.lang = I.getLanguage(); document.documentElement.dir = I.languageInfo(I.getLanguage())?.rtl ? 'rtl' : 'ltr';
+    // The selected locale still controls voice recognition. Untranslated UI is English.
+    document.documentElement.lang = I.getLanguage() === 'ko' ? 'ko' : 'en'; document.documentElement.dir = 'ltr';
     for (const el of document.querySelectorAll('[data-copy]')) el.textContent = t(el.dataset.copy);
     if ($('save-status').textContent) $('save-status').textContent = t('savedShort');
     $('language-note').hidden = ['ko', 'en'].includes(I.getLanguage());
     for (const kind of ['people', 'animals']) {
-      const select = $('identity-' + kind); select.replaceChildren();
-      for (const value of ['unconfirmed', 'same', 'absent', 'different', 'unsure']) { const option = node('option', t(value)); option.value = value; select.append(option); }
+      for (const prefix of ['identity-', 'reading-']) {
+        const select = $(prefix + kind); select.replaceChildren();
+        for (const value of ['unconfirmed', 'same', 'absent', 'different', 'unsure']) { const option = node('option', t(value)); option.value = value; select.append(option); }
+      }
     }
+    for (const group of $('lang-select').querySelectorAll('optgroup')) group.label = t(group.dataset.label);
   }
   function image(url) { const el = node('img', undefined, 'art'); el.src = url; el.alt = t('photo'); return el; }
   function clearPhoto() { if (photoURL) URL.revokeObjectURL(photoURL); photoURL = null; photoData = null; photoFile = null; $('photo-input').value = ''; }
-  function clearVoice() { $('voice-input').value = ''; }
+  function clearVoice() { $('voice-input').value = ''; voiceConverted = false; }
+  function updatePhoto(file) {
+    if (photoURL) URL.revokeObjectURL(photoURL);
+    photoFile = file; photoData = null; photoURL = file ? URL.createObjectURL(file) : null;
+    if (!file) $('photo-input').value = '';
+    change(W.input(record, record.memoText));
+  }
+  function readingIdentity(kind, value) {
+    const previous = record;
+    let next = W.identity(previous, kind, value);
+    if (next === previous) return;
+    // Only the photo connection changed: revalidate the SAME source text and question
+    // at the new revision. Image jobs/art still invalidate through change().
+    if (W.prepared(previous)) {
+      next = W.prepare(next);
+      for (const key of ['story', 'briefing']) {
+        if (W.validOutput(previous, previous[key])) {
+          const output = { ...previous[key], revision: next.contentRevision };
+          if (W.validOutput(next, output)) next[key] = output;
+        }
+      }
+      if (W.validQuestion(previous, previous.question)) {
+        const question = { ...previous.question, revision: next.contentRevision };
+        if (W.validQuestion(next, question)) next.question = question;
+      }
+      if (W.validOutput(next, next.story)) next = W.bookDetails(next, W.bookMetadata(previous));
+    }
+    change(next);
+    if (W.prepared(record) && !W.validOutput(record, record.story)) generate('story');
+  }
   function clearTestimony() { $('testimony-input').value = ''; }
   function candidate(c) {
     const box = node('div', undefined, 'candidate-card'); box.dataset.factId = c.id;
@@ -221,7 +288,18 @@
     $('next-action').textContent = t(next);
     $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
     $('voice-progress').hidden = !running.voice;
+    $('voice-warning').hidden = !$('voice-input').files.length || !record.memoText.trim();
+    $('voice-check').hidden = !voiceConverted;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
+    $('photo-input').setAttribute('aria-label', t(photoFile ? 'changePhoto' : 'choosePhoto'));
+    $('photo-pick-label').textContent = t(photoFile ? 'changePhoto' : 'choosePhoto');
+    $('remove-photo').hidden = !photoFile;
+    $('photo-change-impact').hidden = !record.candidates.length && !running.extract;
+    const previewPhoto = $('capture-photo-preview'); previewPhoto.hidden = !photoURL;
+    if (previewPhoto.dataset.url !== (photoURL || '')) {
+      previewPhoto.replaceChildren(); if (photoURL) previewPhoto.append(image(photoURL));
+      previewPhoto.dataset.url = photoURL || '';
+    }
     $('nav-review').disabled = !record.candidates.length;
     $('selection-count').textContent = t('selected', { n: W.used(record).length });
     if (screen === 'review') {
@@ -234,6 +312,8 @@
       for (const k of ['people', 'animals']) $('identity-' + k).value = record.identity[k];
     }
     const ready = W.prepared(record);
+    $('reading-identity').hidden = !photoFile || !ready;
+    for (const kind of ['people', 'animals']) $('reading-' + kind).value = record.identity[kind];
     $('restricted-notice').hidden = ready;
     output($('briefing'), record.briefing); renderStory();
     const storyValid = W.validOutput(record, record.story);
@@ -307,6 +387,10 @@
     persist(); show('preview');
     if (W.prepared(record)) { if (!W.validQuestion(record, record.question)) nextQuestion(true); if (!W.validOutput(record, record.briefing)) generate('briefing'); }
   }
+  function readTogether() {
+    show('bedtime');
+    if (W.prepared(record) && !W.validOutput(record, record.story)) generate('story');
+  }
   async function style() {
     if (running.style || !photoFile || !W.imageAllowed(record)) return;
     const token = jobs.begin('style'), file = photoFile; running.style = true; statuses.style = ''; render();
@@ -350,7 +434,7 @@
     try {
       const text = await API.voice(file, I.languageInfo(I.getLanguage()).bias);
       if (!jobs.current(token)) return;
-      $('memo-input').value = text; change(W.input(record, text));
+      $('memo-input').value = text; voiceConverted = true; change(W.input(record, text));
     } catch (e) { if (jobs.current(token)) fail(e); }
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
@@ -379,7 +463,13 @@
   async function init() {
     const lang = localStorage.getItem('taw-lang') || navigator.language.split('-')[0];
     I.setLanguage(lang);
-    for (const item of I.languages()) { const option = node('option', item.name); option.value = item.code; $('lang-select').append(option); }
+    for (const [key, translated] of [['translatedLanguages', true], ['fallbackLanguages', false]]) {
+      const group = node('optgroup'); group.dataset.label = key;
+      for (const item of I.languages().filter(item => ['ko', 'en'].includes(item.code) === translated)) {
+        const option = node('option', item.name); option.value = item.code; group.append(option);
+      }
+      $('lang-select').append(group);
+    }
     $('lang-select').value = I.getLanguage(); translate();
     $('lang-select').onchange = () => { I.setLanguage($('lang-select').value); localStorage.setItem('taw-lang', I.getLanguage()); translate(); render(); };
     $('theme-toggle').onclick = () => {
@@ -389,16 +479,21 @@
       window.TawUI.render(screen, t);
     };
     $('memo-input').oninput = () => change(W.input(record, $('memo-input').value));
-    $('photo-input').onchange = () => { if (photoURL) URL.revokeObjectURL(photoURL); photoFile = $('photo-input').files[0] || null; photoData = null; photoURL = photoFile ? URL.createObjectURL(photoFile) : null; change(W.input(record, record.memoText)); };
+    $('photo-input').onchange = () => updatePhoto($('photo-input').files[0] || null);
+    $('remove-photo').onclick = () => { updatePhoto(null); $('photo-input').focus(); };
     $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
     $('extract-btn').onclick = extract; $('transcribe-btn').onclick = voice;
-    $('prepare-btn').onclick = preview; $('nav-preview').onclick = preview; $('nav-review').onclick = () => show('review');
+    $('prepare-btn').onclick = preview;
+    $('nav-preview').onclick = () => W.validOutput(record, record.story) ? readTogether() : preview();
+    $('nav-review').onclick = () => show('review');
     $('nav-capture').onclick = $('edit-input').onclick = () => show('capture');
     for (const k of ['people', 'animals']) $('identity-' + k).onchange = () => change(W.identity(record, k, $('identity-' + k).value));
+    for (const k of ['people', 'animals']) $('reading-' + k).onchange = () => readingIdentity(k, $('reading-' + k).value);
+    $('edit-reading').onclick = preview;
     $('briefing-retry').onclick = () => generate('briefing'); $('story-retry').onclick = () => generate('story');
     $('another-question').onclick = () => nextQuestion();
     $('question-text').oninput = () => { if (!record.question) return; record = Object.assign({}, record, { question: Object.assign({}, record.question, { text: $('question-text').value, edited: true }) }); persist(); $('question-meta').textContent = t('edited'); };
-    $('open-bedtime').onclick = () => { show('bedtime'); if (W.prepared(record) && !W.validOutput(record, record.story)) generate('story'); };
+    $('open-bedtime').onclick = readTogether;
     $('para-art-all').onclick = generateAllParagraphArt;
     $('style-btn').onclick = style;
     $('accept-art').onclick = () => { if (W.imageAllowed(record)) acceptedArt = art; render(); };
@@ -416,12 +511,12 @@
     try { db = await S.open(); stage = 'load'; await load(); } catch (e) { loaded = true; storageWarning(false, report(stage, e)); }
     window.addEventListener('beforeunload', event => { if (blocked) { event.preventDefault(); event.returnValue = ''; } });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-    render(); window.TAW_READY = true;
+    render();
     // Extension boundary for local books. No service credentials or mutable globals exposed.
     if (window.TawBooksUI) window.TawBooksUI.init({ getRecord: () => record, getDB: () => db, getArt: () => W.imageAllowed(record) ? acceptedArt : null,
       getParagraphArts: () => W.imageAllowed(record) ? paragraphArt.slice() : [],
       setBookDetails: patch => { record = W.bookDetails(record, patch); persist(); render(); },
-      getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download,
+      getVersion: () => storageVersion, flush: () => queue, isBlocked: () => blocked, t, node, image, show, message, fail, download, openDialog, closeDialog,
       reset: async () => {
         if (blocked) throw Error('Unsaved changes'); blocked = true;
         try {
@@ -431,6 +526,10 @@
           localStorage.removeItem('taw-day-v1'); show('capture');
         } finally { blocked = false; render(); }
       } });
+    history.replaceState({ taw: true, screen: 'capture', scroll: 0 }, '');
+    history.scrollRestoration = 'manual'; navigationReady = true;
+    window.addEventListener('popstate', restoreHistory);
+    window.TAW_READY = true;
   }
   init().catch(fail);
 })();

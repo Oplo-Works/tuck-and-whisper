@@ -18,6 +18,16 @@ Built entirely during the Meta Global AI Developer Hackathon (Oct 30 – Nov 4, 
 
 Design for iPhone and Android phone sizes first. Preserve the cozy night palette, gentle glow, and comfortable reading space while removing unused layout space. Preserve existing features and keep their purpose apparent through clear labels and familiar controls. Keep frequent actions, including language selection and theme switching, directly accessible; do not add dialogs or extra clicks merely to save space.
 
+## Mobile usability (shell v37)
+
+Prepared stories open directly from Read. Question/briefing editing stays visible on the reading page. Photo selection has a localized Choose/Change control, a thumbnail, a separate Remove action, and an explanation before changing a reviewed draft. Inline people/animal checks on the reading page preserve and revalidate the existing confirmed text, question and title while invalidating artwork and stale image jobs. The original review controls and all source-validation rules remain available.
+
+Draft autosave is explicitly labeled separately from saving a book to the library. Named navigation and reading/save/download actions stay reachable while scrolling, with action bars returning to normal flow for short viewports/keyboards. Voice overwrite warnings appear only with a selected recording and an existing memo; conversion guidance appears after transcription. Download options and the download button remain at the top of the preview. The original self-contained HTML format and text-only export option are preserved; native OS sharing was not added.
+
+Language selection keeps all 25 locales. Optgroups disclose that the interface is translated in Korean/English and uses English for other locales; the selected locale still controls voice recognition. Empty-library labels and save feedback update on language changes. Browser back/forward tracks app screens and the reading/download dialog, retaining the active draft and export choice.
+
+Validation: 48 core + 39 Node checks passed; all 75 Chromium browser cases passed across the full run and targeted rerun of two expectations changed by the new behavior. All 12 mobile-emulation cases passed across Chromium/WebKit at 320/360/390/430px. Added checks cover direct reading, question edits, photo removal, inline identity preservation and late artwork invalidation, language changes, reachable actions, and back/forward through dialogs. Screenshots were visually reviewed. These use mocked AI responses, not live model calls or physical-device certification. Release: `taw-shell-v37`, footer `build: mobile-usability (shell v37)`.
+
 ## Direct theme control (shell v36)
 
 The labeled Paper / Dusk button is back in the top-right header and changes the theme in one tap. The settings icon and sheet are removed. Language selection remains directly visible; theme preferences still persist across reloads.

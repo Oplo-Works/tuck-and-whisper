@@ -2,6 +2,7 @@
   'use strict';
   let app, saving = false, statusKey = '', exportSnapshot = null, exportRevision = null, exportDay = null, exportSaved = false, objectURLs = [];
   let coverURLs = [], dialogReturnFocus = null;
+  let lastDialog = null, feedbackKey = '', feedbackVars = {}, libraryRequest = 0;
   const $ = id => document.getElementById(id), S = window.TawStorage, B = window.TawBooks, W = window.TawWorkflow;
   function release() { for (const url of objectURLs) URL.revokeObjectURL(url); objectURLs = []; }
   function display(book) {
@@ -35,29 +36,30 @@
     return B.snapshot(app.getRecord(), image, W, paraImages);
   }
   async function save() {
-    if (saving || app.isBlocked()) return; saving = true; app.message(''); $('book-save-status').textContent = app.t('bookSaving'); render();
+    if (saving || app.isBlocked()) return; saving = true; app.message(''); feedbackKey = 'bookSaving'; feedbackVars = {}; render();
     try {
       const book = await currentBook(); await app.flush();
       if (app.isBlocked()) throw Error('Unsaved changes');
       await S.saveBook(app.getDB(), book, app.getVersion());
       const readback = (await S.books(app.getDB())).find(b => b.id === book.id);
       if (!await B.same(readback, book)) throw Error('Book verification failed');
-      const status = app.t(book.artwork || book.paragraphs.some(p => p.artwork) ? 'bookSaved' : 'bookSavedText');
-      $('book-save-status').textContent = status;
+      feedbackKey = book.artwork || book.paragraphs.some(p => p.artwork) ? 'bookSaved' : 'bookSavedText';
     } catch (e) {
-      const status = app.t('bookSaveFailed', { reason: e.cause?.name || e.message });
-      $('book-save-status').textContent = status;
+      feedbackKey = 'bookSaveFailed'; feedbackVars = { reason: e.cause?.name || e.message };
     }
     finally { saving = false; render(); }
   }
-  async function library() {
+  async function library(options = {}) {
+    const request = ++libraryRequest;
     for (const url of coverURLs) URL.revokeObjectURL(url); coverURLs = [];
-    app.show('library'); const area = $('books'); area.replaceChildren();
+    app.show('library', options); const area = $('books'); area.replaceChildren();
     try {
       const books = await S.books(app.getDB());
+      if (request !== libraryRequest) return;
       if (!books.length) {
-        area.append(app.node('p', app.t('libraryEmpty')));
+        const empty = app.node('p', app.t('libraryEmpty')); empty.dataset.copy = 'libraryEmpty'; area.append(empty);
         const start = app.node('button', app.t('returnCapture'), 'primary'); start.dataset.icon = 'note';
+        start.dataset.copy = 'returnCapture';
         start.onclick = () => app.show('capture'); area.append(start);
       }
       for (const book of books) {
@@ -76,10 +78,10 @@
         const date = app.node('time', normalized.eventDate, 'book-date'); date.dateTime = normalized.eventDate; info.append(date);
         if (normalized.lines[0] && normalized.lines[0] !== normalized.title) info.append(app.node('span', normalized.lines[0], 'book-teaser'));
         open.append(info); open.setAttribute('aria-label', normalized.title);
-        open.onclick = () => { dialogReturnFocus = open; exportSnapshot = book; exportSaved = true; display(book); $('book-snapshot').hidden = false; $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false; $('book-dialog').showModal(); };
+        open.onclick = () => { dialogReturnFocus = open; exportSnapshot = book; exportSaved = true; showDialog(); };
         const remove = app.node('button', app.t('deleteBook'));
         remove.dataset.copy = 'deleteBook'; remove.dataset.icon = 'trash';
-        remove.onclick = async () => { if (!confirm(app.t('deleteBook') + '?')) return; try { await S.deleteBook(app.getDB(), book.id); await library(); } catch (e) { app.fail(e); } };
+        remove.onclick = async () => { if (!confirm(app.t('deleteBook') + '?')) return; try { await S.deleteBook(app.getDB(), book.id); if (lastDialog?.book.id === book.id) lastDialog = null; await library(); } catch (e) { app.fail(e); } };
         card.append(open, remove); area.append(card);
       }
       window.TawUI.decorate(area);
@@ -88,9 +90,20 @@
   async function previewExport() {
     try {
       app.message(''); const book = await currentBook(); exportSnapshot = book; exportSaved = false; exportDay = book.dayId; exportRevision = book.revision;
-      display(book); $('book-snapshot').hidden = true; $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false;
-      dialogReturnFocus = $('export-book'); $('book-dialog').showModal();
+      dialogReturnFocus = $('export-book'); showDialog();
     } catch (e) { app.fail(e); }
+  }
+  function showDialog() {
+    lastDialog = { book: exportSnapshot, saved: exportSaved, day: exportDay, revision: exportRevision, focus: dialogReturnFocus, textOnly: false };
+    display(exportSnapshot); $('book-snapshot').hidden = !exportSaved;
+    $('book-note').textContent = app.t('exportHint'); $('export-options').hidden = false; $('export-text-only').checked = false;
+    app.openDialog(); $('book-dialog').scrollTop = 0;
+  }
+  function reopen() {
+    if (!lastDialog) return false;
+    const snapshot = lastDialog;
+    exportSnapshot = snapshot.book; exportSaved = snapshot.saved; exportDay = snapshot.day; exportRevision = snapshot.revision; dialogReturnFocus = snapshot.focus;
+    showDialog(); $('export-text-only').checked = snapshot.textOnly; lastDialog.textOnly = snapshot.textOnly; return true;
   }
   async function exportBook() {
     try {
@@ -116,7 +129,8 @@
     const valid = W.validOutput(app.getRecord(), app.getRecord().story);
     const meta = B.metadata(app.getRecord());
     const key = JSON.stringify([app.getRecord().dayId, app.getRecord().contentRevision, meta, app.getRecord().question?.text, app.getArt(), app.getParagraphArts()]);
-    if (key !== statusKey) { statusKey = key; if (!saving) $('book-save-status').textContent = ''; }
+    if (key !== statusKey) { statusKey = key; if (!saving) feedbackKey = ''; }
+    $('book-save-status').textContent = feedbackKey ? app.t(feedbackKey, feedbackVars) : '';
     $('book-details').hidden = !valid;
     if (document.activeElement !== $('book-title')) $('book-title').value = meta.title;
     if (document.activeElement !== $('event-date')) $('event-date').value = meta.eventDate;
@@ -130,10 +144,18 @@
     $('book-title').oninput = () => app.setBookDetails({ title: $('book-title').value });
     $('event-date').oninput = () => app.setBookDetails({ eventDate: $('event-date').value });
     $('save-book').onclick = save; $('nav-library').onclick = library; $('export-book').onclick = previewExport; $('download-book').onclick = exportBook;
+    $('export-text-only').onchange = () => { if (lastDialog) lastDialog.textOnly = $('export-text-only').checked; };
     window.addEventListener('beforeunload', () => { for (const url of coverURLs) URL.revokeObjectURL(url); release(); });
-    $('book-dialog').addEventListener('close', () => { release(); exportSnapshot = null; if (dialogReturnFocus?.isConnected) dialogReturnFocus.focus({ preventScroll: true }); dialogReturnFocus = null; });
-    $('delete-all').onclick = async () => { if (!confirm(app.t('deleteConfirm'))) return; try { await app.reset(); } catch (e) { app.fail(e); } };
+    $('book-dialog').addEventListener('close', () => {
+      // close is queued: a rapid browser Forward may have already reopened it.
+      if ($('book-dialog').open) return;
+      if (lastDialog) lastDialog.textOnly = $('export-text-only').checked;
+      release(); exportSnapshot = null;
+      if (dialogReturnFocus?.isConnected) dialogReturnFocus.focus({ preventScroll: true });
+      dialogReturnFocus = null; app.closeDialog();
+    });
+    $('delete-all').onclick = async () => { if (!confirm(app.t('deleteConfirm'))) return; try { await app.reset(); lastDialog = null; } catch (e) { app.fail(e); } };
     render();
   }
-  window.TawBooksUI = { init, render };
+  window.TawBooksUI = { init, render, library, reopen };
 })();

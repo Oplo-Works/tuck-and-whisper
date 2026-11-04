@@ -3,7 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 
-test('v36 cached v32 upgrade boots direct theme controls on the first navigation and preserves the draft offline', async ({ browser }) => {
+test('v37 cached v32 upgrade boots direct theme controls on the first navigation and preserves the draft offline', async ({ browser }) => {
   const oldFiles = new Map(fs.readdirSync('web').map(file => [file, execFileSync('git', ['show', 'f361d5b:web/' + file])]));
   let currentHTML = false, currentWorker = false;
   const server = http.createServer((req, res) => {
@@ -29,7 +29,7 @@ test('v36 cached v32 upgrade boots direct theme controls on the first navigation
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     currentHTML = true; // Deliberately retain the v32 worker during this navigation.
     await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-    await expect(page.locator('footer')).toHaveText('build: direct-theme (shell v36)');
+    await expect(page.locator('footer')).toHaveText('build: mobile-usability (shell v37)');
     await expect(page.locator('#memo-input')).toHaveValue('업데이트 후에도 남아야 하는 메모');
     await expect(page.locator('#nav-library')).toBeEnabled();
     await expect(page.locator('header #lang-select')).toBeVisible();
@@ -53,7 +53,7 @@ test('v36 cached v32 upgrade boots direct theme controls on the first navigation
       const reg = await navigator.serviceWorker.getRegistration();
       await reg.update(); await controlled;
     });
-    await page.waitForFunction(async () => (await caches.keys()).includes('taw-shell-v36') && !(await caches.keys()).includes('taw-shell-v32'));
+    await page.waitForFunction(async () => (await caches.keys()).includes('taw-shell-v37') && !(await caches.keys()).includes('taw-shell-v32'));
     await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
     await expect(page.locator('#lang-select')).toHaveValue('en');
     await expect(page.locator('header #lang-select')).toBeVisible();

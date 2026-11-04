@@ -8,7 +8,7 @@
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('taw-theme')==='paper'?'paper':'dusk'}catch{document.documentElement.dataset.theme='dusk'}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="design.css?v=36"></head><body>
+<link rel="stylesheet" href="design.css?v=37"></head><body>
 <header><div class="brand-row"><div class="brand"><span class="brand-symbol" data-icon="moon" aria-hidden="true"></span><h1>Tuck and Whisper</h1></div><button id="theme-toggle" type="button" aria-pressed="false"><span></span></button></div><div class="header-context"><p>You missed the moment. You don't have to miss the story.</p><select id="lang-select" aria-label="Language"></select></div></header>
 <main>
 <p id="language-note" class="hint" hidden data-copy="translation"></p>
@@ -19,18 +19,19 @@
 <section id="screen-capture"><div class="card"><h2 tabindex="-1" data-copy="capture"></h2>
 <p class="hint" data-copy="captureHint"></p>
 <div id="photo-section">
-<label for="photo-input" data-copy="photo" data-icon="photo"></label><input type="file" id="photo-input" accept="image/*" aria-describedby="photo-help"><p id="photo-status" class="hint"></p>
+<label for="photo-input" data-copy="photo" data-icon="photo"></label><span class="file-picker"><span id="photo-pick-label"></span><input type="file" id="photo-input" accept="image/*" aria-describedby="photo-help photo-change-impact"></span><p id="photo-status" class="hint"></p>
+<div id="capture-photo-preview" hidden></div><button id="remove-photo" type="button" data-copy="removePhoto" data-icon="cross" hidden></button><p id="photo-change-impact" class="hint" data-copy="photoChangeImpact" hidden></p>
 <p id="photo-help" class="hint" data-copy="photoSkip"></p></div>
 <div id="memo-section">
 <label for="memo-input" data-copy="memo" data-icon="note"></label><textarea id="memo-input" rows="5" aria-describedby="voice-warning"></textarea>
 <p class="hint" data-copy="memoWays"></p>
-<details><summary data-copy="voice" data-icon="voice"></summary><p class="hint" data-copy="voiceInfo"></p><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button></details><p id="voice-warning" data-copy="voiceReplace"></p>
-</div>
-<div id="preparation-notes">
-<details id="capture-privacy"><summary data-copy="privacySummary" data-icon="shield"></summary><p class="hint" data-copy="inputPrivacy"></p><p class="hint" data-copy="retention"></p></details>
-<p class="hint" data-copy="voiceCheck"></p><p id="voice-progress" class="notice" role="status" data-copy="voiceBusy" hidden></p>
+<details id="voice-tools"><summary data-copy="voice" data-icon="voice"></summary><p class="hint" data-copy="voiceInfo"></p><input type="file" id="voice-input" accept="audio/*,.m4a" aria-label="Audio"><button id="transcribe-btn" data-copy="transcribe"></button><p id="voice-warning" data-copy="voiceReplace" hidden></p></details>
 </div>
 <button id="extract-btn" class="primary" data-copy="extract" data-icon="arrow"></button>
+<div id="preparation-notes">
+<details id="capture-privacy"><summary data-copy="privacySummary" data-icon="shield"></summary><p class="hint" data-copy="inputPrivacy"></p><p class="hint" data-copy="retention"></p></details>
+<p id="voice-check" class="hint" data-copy="voiceCheck" hidden></p><p id="voice-progress" class="notice" role="status" data-copy="voiceBusy" hidden></p>
+</div>
 </div><div class="reset-actions"><button id="new-day-btn" data-copy="newDay" data-icon="trash"></button></div>
 </section>
 <section id="screen-review" hidden><div class="card"><h2 tabindex="-1" data-copy="review"></h2><p data-copy="skipped" class="hint"></p><p id="selection-count"></p>
@@ -43,19 +44,19 @@
 <section id="screen-preview" hidden><div class="card"><h2 tabindex="-1" data-copy="preview"></h2><p id="restricted-notice" class="notice" data-copy="noMemo" hidden></p>
 <div id="briefing"></div><p id="briefing-status" aria-live="polite"></p><button id="briefing-retry" data-copy="remakeBriefing"></button>
 <div class="question-heading"><h3 data-copy="question"></h3><button id="another-question" data-copy="another"></button></div><textarea id="question-text" rows="2" aria-label="Question"></textarea><p id="question-meta" class="hint"></p>
-<p class="hint" data-copy="retention"></p><button id="open-bedtime" class="primary" data-copy="read" data-icon="book"></button>
-<details class="audit"><summary data-copy="audit"></summary><div id="preview-audit"></div></details></div></section>
-<section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><h3 id="reading-title"></h3><p id="reading-date" class="hint"></p><div id="reading-art"></div><div id="para-art-tools" hidden><button id="para-art-all" data-copy="paraArtAll"></button><p id="para-art-hint" class="hint"></p></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
-<h3 data-copy="question"></h3><p id="reading-question" class="recall-question"></p>
+
+<details class="audit"><summary data-copy="audit"></summary><div id="preview-audit"></div></details></div><div class="sticky-actions"><button id="open-bedtime" class="primary" data-copy="read" data-icon="book"></button></div></section>
+<section id="screen-bedtime" hidden><div class="card"><h2 tabindex="-1" data-copy="bedtime"></h2><h3 id="reading-title"></h3><p id="reading-date" class="hint"></p><div id="reading-art"></div><details id="reading-identity" hidden><summary data-copy="identityInline" data-icon="shield"></summary><p class="hint" data-copy="identityInlineHint"></p><label for="reading-people" data-copy="people"></label><select id="reading-people"></select><label for="reading-animals" data-copy="animals"></label><select id="reading-animals"></select></details><div id="para-art-tools" hidden><button id="para-art-all" data-copy="paraArtAll"></button><p id="para-art-hint" class="hint"></p></div><div id="story" class="story"></div><p id="story-status" aria-live="polite"></p>
+<div class="question-heading"><h3 data-copy="question"></h3><button id="edit-reading" data-copy="editReading" data-icon="review"></button></div><p id="reading-question" class="recall-question"></p>
 <details><summary data-copy="parentTools"></summary><button id="story-retry" data-copy="remakeStory"></button><button id="style-btn" data-copy="style"></button>
 <p id="art-message" class="hint" data-copy="noImage"></p><div id="art-preview"></div><div id="art-approval" hidden><p data-copy="artworkReview"></p><button id="accept-art" data-copy="acceptArt"></button><button id="reject-art" data-copy="rejectArt"></button></div></details>
 <details class="audit"><summary data-copy="audit"></summary><div id="bedtime-audit"></div></details>
 <div id="testimony-area"><label for="testimony-input" data-copy="testimony"></label><p id="testimony-help" class="hint" data-copy="testimonyHint"></p><input type="text" id="testimony-input" aria-describedby="testimony-help"><button id="save-testimony" data-copy="saveWords" data-icon="talk"></button><div id="testimony-list"></div></div>
-<div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p id="book-save-status" role="status"></p><p class="hint" data-copy="bookPolicy"></p><button id="save-book" data-copy="saveBook" data-icon="save"></button><button id="export-book" data-copy="export" data-icon="download"></button></div>
-</div></section>
+<div id="book-tools" hidden><div id="book-details" hidden><label for="book-title" data-copy="bookTitle"></label><input id="book-title" type="text"><label for="event-date" data-copy="eventDate"></label><input id="event-date" type="date"><p class="hint" data-copy="bookDetailsHint"></p></div><p class="hint" data-copy="bookPolicy"></p></div>
+</div><div id="reading-actions" class="sticky-actions"><p id="book-save-status" role="status"></p><div class="action-row"><button id="save-book" class="primary" data-copy="saveBook" data-icon="save"></button><button id="export-book" data-copy="export" data-icon="download"></button></div></div></section>
 <section id="screen-library" hidden><div class="card"><h2 tabindex="-1" data-copy="library"></h2><div id="books"></div><details id="library-management"><summary data-copy="manageLibrary"></summary><button id="delete-all" data-copy="deleteAll" data-icon="trash"></button></details></div></section>
-<dialog id="book-dialog" aria-labelledby="saved-book-title"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><p id="book-snapshot" class="hint" hidden data-copy="past"></p><div id="book-content"></div><div id="export-options" hidden><p id="book-note" class="hint"></p><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download"></button></div></dialog>
-</main><footer>build: direct-theme (shell v36)</footer>
-<script src="core.js?v=36"></script><script src="workflow.js?v=36"></script><script src="storage.js?v=36"></script><script src="books.js?v=36"></script><script src="books-ui.js?v=36"></script><script src="i18n.js?v=36"></script><script src="copy.js?v=36"></script><script src="ui.js?v=36"></script>
-<script src="api.js?v=36"></script><script src="app.js?v=36"></script>
+<dialog id="book-dialog" aria-labelledby="saved-book-title"><div class="dialog-controls"><form method="dialog" class="dialog-close"><button data-copy="back" autofocus></button></form><div id="export-options" hidden><label class="use"><input type="checkbox" id="export-text-only"><span data-copy="textOnly"></span></label><button id="download-book" data-copy="download" data-icon="download"></button></div></div><p id="book-snapshot" class="hint" hidden data-copy="past"></p><details id="export-info"><summary data-copy="exportDetails"></summary><p id="book-note" class="hint" data-copy="exportHint"></p></details><div id="book-content"></div></dialog>
+</main><footer>build: mobile-usability (shell v37)</footer>
+<script src="core.js?v=37"></script><script src="workflow.js?v=37"></script><script src="storage.js?v=37"></script><script src="books.js?v=37"></script><script src="books-ui.js?v=37"></script><script src="i18n.js?v=37"></script><script src="copy.js?v=37"></script><script src="ui.js?v=37"></script>
+<script src="api.js?v=37"></script><script src="app.js?v=37"></script>
 </body></html>
