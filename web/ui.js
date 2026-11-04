@@ -3,7 +3,7 @@
   'use strict';
   const paths = {
     moon: ['M20.9 13.3A9 9 0 0 1 10.7 3.1 9 9 0 1 0 20.9 13.3Z'],
-    storybook: ['M12 11C9 8.6 5.5 8.2 2.5 9v11c3-.8 6.5-.4 9.5 2 3-2.4 6.5-2.8 9.5-2V9c-3-.8-6.5-.4-9.5 2Zm0 0v11', 'm12 1.5 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1Z'],
+    together: ['M3.5 20C6.6 19.4 9.5 20.3 12 22C14.5 20.3 17.4 19.4 20.5 20L21 13C17.7 12.4 14.6 13.8 12 15.8C9.4 13.8 6.3 12.4 3 13C3 11.5 4 10 5.5 9C4.2 7.6 3.9 4.8 5.7 3.3C7.5 1.8 10 2.7 10.9 4.8C11.8 6.9 10.5 9 8.5 9.5C10.5 11.1 12.7 12.1 14.6 10C13.8 8.3 14.8 6.4 16.5 6.3C18.2 6.2 19.7 7.7 19.4 9.4C19.2 10.7 18.2 11.6 17 11.7'],
     sun: ['M12 3V1M12 23v-2M3 12H1M23 12h-2M4.2 4.2 2.8 2.8M21.2 21.2l-1.4-1.4M4.2 19.8l-1.4 1.4M21.2 2.8l-1.4 1.4', 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0'],
     photo: ['M4 5h16v14H4Z', 'm4 15 5-5 5 6 3-3 3 3', 'M17 8h.01'],
     note: ['M8 3h8l4 4v14H4V3h4Z', 'M8 11h8M8 15h8M8 7h3'],
@@ -22,7 +22,7 @@
   function icon(name) {
     const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
-    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.65');
+    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', name === 'together' ? '1.4' : '1.65');
     svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.classList.add('ui-icon');
     for (const d of paths[name] || paths.note) { const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); svg.append(path); }
     svg.dataset.name = name; return svg;

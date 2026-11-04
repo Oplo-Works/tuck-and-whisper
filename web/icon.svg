@@ -2,8 +2,7 @@
   <defs><linearGradient id="paper" x2="1" y2="1"><stop stop-color="#fff0cd"/><stop offset="1" stop-color="#ddc5a5"/></linearGradient></defs>
   <rect width="512" height="512" rx="112" fill="#11162d"/>
   <circle cx="256" cy="256" r="206" fill="url(#paper)"/>
-  <g transform="translate(100 88) scale(13)" fill="none" stroke="#494055" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 11C9 8.6 5.5 8.2 2.5 9v11c3-.8 6.5-.4 9.5 2 3-2.4 6.5-2.8 9.5-2V9c-3-.8-6.5-.4-9.5 2Zm0 0v11"/>
-    <path d="m12 1.5 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1Z"/>
+  <g transform="translate(76 68) scale(15)" fill="none" stroke="#494055" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 20C6.6 19.4 9.5 20.3 12 22C14.5 20.3 17.4 19.4 20.5 20L21 13C17.7 12.4 14.6 13.8 12 15.8C9.4 13.8 6.3 12.4 3 13C3 11.5 4 10 5.5 9C4.2 7.6 3.9 4.8 5.7 3.3C7.5 1.8 10 2.7 10.9 4.8C11.8 6.9 10.5 9 8.5 9.5C10.5 11.1 12.7 12.1 14.6 10C13.8 8.3 14.8 6.4 16.5 6.3C18.2 6.2 19.7 7.7 19.4 9.4C19.2 10.7 18.2 11.6 17 11.7"/>
   </g>
 </svg>
