@@ -84,10 +84,17 @@
   window.TawAPI = { photo, extract, arrange, style, paragraphArt, voice };
     async function audioFileToWav(file) {
     const bytes = await file.arrayBuffer();
-    const decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) {
+      const error = Error('Audio decoding is unavailable in this browser.'); error.code = 'audio-decode-failed'; throw error;
+    }
+    const decodeCtx = new Context();
     let decoded;
     try {
       decoded = await decodeCtx.decodeAudioData(bytes);
+    } catch (cause) {
+      const error = Error('This audio format could not be decoded. Try another recording or audio file.');
+      error.code = 'audio-decode-failed'; throw error;
     } finally {
       decodeCtx.close();
     }

@@ -140,6 +140,7 @@
   function paragraphArtAllowed() { return W.imageAllowed(record) && hasArtAnchor(); }
   function change(next) { if (next === record) return; invalidate(); record = next; persist(); render(); }
   function show(name, options = {}) {
+    if (name !== 'capture') window.TawRecorder?.stop();
     if (name === 'review' && !record.candidates.length) name = 'capture';
     if (navigationReady && options.navigation !== 'none' && name !== screen) {
       history.replaceState({ ...history.state, scroll: window.scrollY }, '');
@@ -193,7 +194,8 @@
   }
   function image(url) { const el = node('img', undefined, 'art'); el.src = url; el.alt = t('photo'); return el; }
   function clearPhoto() { if (photoURL) URL.revokeObjectURL(photoURL); photoURL = null; photoData = null; photoFile = null; $('photo-input').value = ''; }
-  function clearVoice() { $('voice-input').value = ''; voiceConverted = false; }
+  function clearVoice() { window.TawRecorder?.clear(); $('voice-input').value = ''; voiceConverted = false; }
+  function voiceFile() { return window.TawRecorder?.getFile() || $('voice-input').files[0]; }
   function updatePhoto(file) {
     if (photoURL) URL.revokeObjectURL(photoURL);
     photoFile = file; photoData = null; photoURL = file ? URL.createObjectURL(file) : null;
@@ -323,11 +325,12 @@
     if (screen === 'library') next = 'nextLibrary';
     if (blocked) next = conflicted ? 'conflict' : corrupted ? 'corrupt' : 'unsaved';
     $('next-action').textContent = t(next);
-    $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !$('voice-input').files.length;
+    $('extract-btn').disabled = !!running.extract || !!running.voice || !record.memoText.trim(); $('transcribe-btn').disabled = !!running.voice || !!window.TawRecorder?.busy() || !voiceFile();
+    window.TawRecorder?.render();
     $('extract-progress').textContent = running.extract ? t('extractBusy') : '';
     $('extract-btn').setAttribute('aria-busy', String(!!running.extract));
     $('voice-progress').hidden = !running.voice;
-    $('voice-warning').hidden = !$('voice-input').files.length || !record.memoText.trim();
+    $('voice-warning').hidden = !voiceFile() || !record.memoText.trim();
     $('voice-check').hidden = !voiceConverted;
     $('photo-status').textContent = photoFile ? photoFile.name : '';
     $('photo-input').setAttribute('aria-label', t(photoFile ? 'changePhoto' : 'choosePhoto'));
@@ -477,13 +480,13 @@
     }
   }
   async function voice() {
-    const file = $('voice-input').files[0]; if (!file || running.voice) return;
+    const file = voiceFile(); if (!file || running.voice || window.TawRecorder?.busy()) return;
     const token = jobs.begin('voice'); running.voice = true; message(t('busy')); render();
     try {
       const text = await API.voice(file, I.languageInfo(I.getLanguage()).bias);
       if (!jobs.current(token)) return;
       $('memo-input').value = text; voiceConverted = true; change(W.input(record, text));
-    } catch (e) { if (jobs.current(token)) fail(e); }
+    } catch (e) { if (jobs.current(token)) fail(e.code === 'audio-decode-failed' ? Error(t('voiceDecodeFailed')) : e); }
     finally { if (jobs.current(token)) { running.voice = false; render(); } }
   }
   async function load() {
@@ -530,7 +533,9 @@
     $('memo-input').oninput = () => { if ($('memo-input').value !== record.memoText) change(W.input(record, $('memo-input').value)); };
     $('photo-input').onchange = () => updatePhoto($('photo-input').files[0] || null);
     $('remove-photo').onclick = () => { updatePhoto(null); $('photo-input').focus(); };
-    $('voice-input').onchange = () => { jobs.begin('voice'); running.voice = false; render(); };
+    $('voice-input').onchange = () => { window.TawRecorder?.clear(); jobs.begin('voice'); running.voice = false; voiceConverted = false; render(); };
+    window.TawRecorder?.init({ t, changed: render, converting: () => !!running.voice,
+      replaced: () => { $('voice-input').value = ''; jobs.begin('voice'); running.voice = false; voiceConverted = false; } });
     $('extract-btn').onclick = extract; $('transcribe-btn').onclick = voice;
     $('prepare-btn').onclick = preview;
     $('nav-preview').onclick = () => W.validOutput(record, record.story) ? readTogether() : preview();
