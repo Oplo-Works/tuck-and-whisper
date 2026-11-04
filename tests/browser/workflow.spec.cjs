@@ -83,8 +83,8 @@ for (const lang of ['ko', 'en']) test('v26 (b,c,e,f) clear labels and static gui
   const ko = lang === 'ko';
   await expect(page.locator('#photo-section [data-copy=photoSkip]')).toContainText(ko ? '단락 그림 없이 글만' : 'paragraphs stay text-only');
   await expect(page.locator('[data-copy=captureHint]')).toContainText(ko ? '하루의 작은 순간' : 'A little moment from the day');
-  await expect(page.locator('[data-copy=voiceReplace]')).toContainText(ko ? '덮어씁니다' : 'replaces the current memo');
-  await expect(page.locator('#preparation-notes [data-copy=voiceCheck]')).toContainText(ko ? '메모를 먼저 확인' : 'check the memo first');
+  await expect(page.locator('[data-copy=voiceReplace]')).toContainText(ko ? '덮어씁니다' : 'Converting audio will replace your current note');
+  await expect(page.locator('#preparation-notes [data-copy=voiceCheck]')).toContainText(ko ? '메모를 먼저 확인' : 'Please double-check your note');
   await expect(page.locator('#new-day-btn')).toHaveText(ko ? '현재 초안 지우기' : 'Clear current draft');
   await expect(page.locator('#extract-btn')).toHaveText(ko ? '이야기 준비' : 'Prepare reading');
   await expect(page.locator('#prepare-btn')).toHaveText(ko ? '읽을 준비' : 'Prepare selected details');
@@ -191,7 +191,7 @@ test('v26 all 23 fallback locales show the new English copy', async ({ page }) =
   for (const lang of languages) {
     await page.locator('#lang-select').selectOption(lang);
     await expect(page.locator('#new-day-btn')).toHaveText('Clear current draft');
-    await expect(page.locator('[data-copy=voiceReplace]')).toContainText('replaces the current memo');
+    await expect(page.locator('[data-copy=voiceReplace]')).toContainText('Converting audio will replace your current note');
     await expect(page.locator('[data-copy=photoSkip]')).toContainText('paragraphs stay text-only');
     await expect(page.locator('#language-note')).toBeVisible();
   }
@@ -331,7 +331,7 @@ test('T37 actual service-worker shell reloads offline without caching user media
   expect(cached.some(url => url.endsWith('/books.js'))).toBe(true);
   expect(cached.some(url => /\.(png|jpe?g|webp)$/.test(url))).toBe(false);
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => window.TAW_READY);
-  await expect(page.locator('footer')).toHaveText('build: warm-paper (shell v30)'); await context.close();
+  await expect(page.locator('footer')).toHaveText('build: wife-copy-dusk (shell v31)'); await context.close();
 });
 for (const reset of ['new day', 'load latest', 'delete all']) {
   test('v19 voice selection clears on ' + reset, async ({ page, context }) => {
