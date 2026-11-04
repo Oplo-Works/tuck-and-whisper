@@ -37,7 +37,7 @@
         try {
           // Generated artwork and its exact source revision commit atomically.
           // Originals never enter this field; older callers remain compatible.
-          const entry = { version: expected + 1, record };
+          const entry = { version: expected + 1, record, archived: null };
           if (artwork !== undefined) entry.artwork = artwork;
           const put = store.put(entry, 'day'); put.onerror = () => { failure = failure || put.error; };
           if (clearBooks) tx.objectStore('books').clear();
@@ -103,6 +103,42 @@
       tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); tx.onerror = () => {};
     });
   }
-  root.TawStorage = { open, load, save, books, saveBook, deleteBook };
+  function markArchived(db, bookId, expected) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['current', 'books'], 'readwrite');
+      const current = tx.objectStore('current'), req = current.get('day'); let marked = false;
+      req.onsuccess = () => {
+        const entry = req.result;
+        if (!entry || entry.version !== expected) return;
+        const book = tx.objectStore('books').get(bookId);
+        book.onsuccess = () => {
+          if (!book.result || book.result.dayId !== entry.record.dayId || book.result.revision !== entry.record.contentRevision) return;
+          current.put({ ...entry, archived: { bookId } }, 'day'); marked = true;
+        };
+      };
+      tx.oncomplete = () => resolve(marked);
+      tx.onabort = () => reject(tx.error); tx.onerror = () => {};
+    });
+  }
+  function clearArchived(db, expected, record) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['current', 'books'], 'readwrite');
+      const current = tx.objectStore('current'), req = current.get('day'); let cleared = null;
+      req.onsuccess = () => {
+        const entry = req.result;
+        if (!entry || entry.version !== expected || !entry.archived) return;
+        const book = tx.objectStore('books').get(entry.archived.bookId);
+        book.onsuccess = () => {
+          if (!book.result || book.result.dayId !== entry.record.dayId || book.result.revision !== entry.record.contentRevision) return;
+          // The matching saved book must still exist, and no newer edit may be overwritten.
+          cleared = { version: expected + 1, record, archived: null };
+          try { current.put(cleared, 'day'); } catch (e) { tx.abort(); }
+        };
+      };
+      tx.oncomplete = () => resolve(cleared);
+      tx.onabort = () => reject(tx.error || Error('Could not start a fresh draft')); tx.onerror = () => {};
+    });
+  }
+  root.TawStorage = { open, load, save, books, saveBook, deleteBook, markArchived, clearArchived };
   if (typeof module === 'object') module.exports = root.TawStorage;
 })(typeof globalThis === 'object' ? globalThis : this);
